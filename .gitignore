@@ -1,0 +1,16 @@
+# Dependências
+node_modules/
+
+# Dados locais e informações pessoais (LGPD) - NÃO subir no Git
+data/
+seed/
+carometro.pdf
+*.db
+*.db-*
+
+# Fontes proprietárias do sistema
+assets/fonts/
+
+# Ambiente e logs
+.env
+*.log

@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Carômetro Geral — Escola Adventista de Ibiúna</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell no-print">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <img src="/assets/logo.png" alt="Educação Adventista" class="brand-logo" />
+        <div class="brand-divider"></div>
+        <div>
+          <h1>Carômetro Geral</h1>
+          <p class="brand-sub" id="headerSchoolName">Escola Adventista de Ibiúna</p>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <span class="db-badge" title="Banco de dados SQLite local — funciona sem internet e não sai do ar">
+          <span class="db-dot"></span> Banco Local Ativo
+        </span>
+        <button class="btn btn-secondary" id="btnSettings" title="Configurações do relatório e backup">
+          Configurações &amp; Backup
+        </button>
+        <button class="btn btn-secondary" id="btnPrintPreview" title="Visualizar e imprimir no padrão oficial">
+          Imprimir
+        </button>
+        <button class="btn btn-primary-outline" id="btnDownloadPdf" title="Gerar arquivo PDF idêntico ao modelo">
+          Gerar PDF
+        </button>
+        <button class="btn btn-primary" id="btnNewEmployee">
+          + Novo Funcionário
+        </button>
+      </div>
+    </header>
+
+    <!-- Stats Strip + Navigation Tabs -->
+    <div class="subbar">
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="consulta" role="tab">Consulta &amp; Lista</button>
+        <button class="tab" data-tab="ficha" role="tab">Ficha / Navegar Registros</button>
+        <button class="tab" data-tab="impressao" role="tab">Prévia de Impressão (Modelo A4)</button>
+      </nav>
+
+      <div class="stats-pills" id="statsPills">
+        <span class="stat-pill">Total: <strong id="statTotal">0</strong></span>
+        <span class="stat-pill stat-prof">Professores: <strong id="statProf">0</strong></span>
+        <span class="stat-pill stat-func">Funcionários: <strong id="statFunc">0</strong></span>
+        <span class="stat-pill stat-active">Ativos: <strong id="statAtivos">0</strong></span>
+      </div>
+    </div>
+
+    <!-- TAB 1: CONSULTA & LISTA -->
+    <main class="main-content">
+      <section id="tab-consulta" class="tab-panel active">
+        <div class="filter-bar card">
+          <div class="search-box">
+            <input
+              type="search"
+              id="searchInput"
+              placeholder="Consultar por nome, código/matrícula, CPF, RG, e-mail, endereço, telefone ou cargo..."
+              autocomplete="off"
+            />
+          </div>
+          <div class="filter-controls">
+            <div class="segmented" id="tipoFilter">
+              <button class="seg-btn active" data-value="Todos">Todos</button>
+              <button class="seg-btn" data-value="Professor">Professores</button>
+              <button class="seg-btn" data-value="Funcionário">Funcionários</button>
+            </div>
+
+            <select id="statusFilter" aria-label="Filtrar por status">
+              <option value="">Status: Todos</option>
+              <option value="Ativos" selected>Somente Ativos</option>
+              <option value="Demitidos">Somente Demitidos</option>
+            </select>
+
+            <select id="assinaturaFilter" aria-label="Filtrar por assinatura">
+              <option value="">Assinatura: Todas</option>
+              <option value="sim">Com assinatura digitalizada</option>
+              <option value="nao">Sem assinatura digitalizada</option>
+            </select>
+
+            <select id="orderSelect" aria-label="Ordenar por">
+              <option value="nome_asc">Ordenar: Nome (A–Z)</option>
+              <option value="nome_desc">Ordenar: Nome (Z–A)</option>
+              <option value="codigo_asc">Ordenar: Código (Menor–Maior)</option>
+              <option value="codigo_desc">Ordenar: Código (Maior–Menor)</option>
+              <option value="recentes">Ordenar: Cadastrados recentemente</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="selection-bar" id="selectionBar">
+          <div class="selection-info">
+            <label class="checkbox-inline">
+              <input type="checkbox" id="selectAllCheckbox" />
+              <span>Selecionar todos da lista (<span id="filteredCountLabel">0</span>)</span>
+            </label>
+            <span class="selected-badge" id="selectedBadge" hidden>
+              <strong id="selectedCount">0</strong> selecionado(s)
+              <button class="link-btn" id="btnClearSelection">Limpar seleção</button>
+            </span>
+          </div>
+          <div class="selection-actions">
+            <button class="btn btn-sm btn-secondary" id="btnPrintFiltered">Imprimir Filtrados</button>
+            <button class="btn btn-sm btn-primary-outline" id="btnPdfFiltered">Gerar PDF Filtrados</button>
+          </div>
+        </div>
+
+        <div class="table-wrap card">
+          <table class="emp-table">
+            <thead>
+              <tr>
+                <th class="col-check"></th>
+                <th class="col-photo">Foto</th>
+                <th>Cód.</th>
+                <th>Nome / Cargo</th>
+                <th>Categoria</th>
+                <th>CPF</th>
+                <th>Telefones / E-mail</th>
+                <th>Contratação</th>
+                <th>Assin.</th>
+                <th class="col-actions">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="empTableBody"></tbody>
+          </table>
+          <div id="emptyState" class="empty-state" hidden>
+            <p>Nenhum registro encontrado com os filtros atuais.</p>
+            <button class="btn btn-secondary" id="btnResetFilters">Limpar Filtros</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: FICHA / NAVEGAR REGISTROS -->
+      <section id="tab-ficha" class="tab-panel">
+        <div class="navigator-bar card">
+          <div class="nav-buttons">
+            <button class="btn btn-secondary btn-sm" id="navFirst" title="Primeiro registro">|&lt; Primeiro</button>
+            <button class="btn btn-secondary btn-sm" id="navPrev" title="Registro anterior (Alt+Seta Esquerda)">&lt; Anterior</button>
+            <span class="nav-counter" id="navCounter">Registro 0 de 0</span>
+            <button class="btn btn-secondary btn-sm" id="navNext" title="Próximo registro (Alt+Seta Direita)">Próximo &gt;</button>
+            <button class="btn btn-secondary btn-sm" id="navLast" title="Último registro">Último &gt;|</button>
+          </div>
+          <div class="nav-actions">
+            <button class="btn btn-secondary btn-sm" id="btnFichaNew">+ Novo</button>
+            <button class="btn btn-secondary btn-sm" id="btnFichaPrintOne">Imprimir Este</button>
+            <button class="btn btn-primary-outline btn-sm" id="btnFichaPdfOne">PDF Este</button>
+            <button class="btn btn-danger-outline btn-sm" id="btnFichaDelete">Excluir</button>
+          </div>
+        </div>
+
+        <!-- Live Model Card Preview -->
+        <div class="card live-preview-box">
+          <div class="live-preview-header">
+            <span>Prévia fiel da ficha no Carômetro (padrão PDF)</span>
+            <span class="mode-pill" id="fichaModePill">Editando registro</span>
+          </div>
+          <div class="live-card-stage" id="liveCardPreview"></div>
+        </div>
+
+        <!-- Employee Form -->
+        <form id="employeeForm" class="card emp-form">
+          <input type="hidden" id="empId" />
+
+          <div class="form-layout">
+            <!-- Photo Column -->
+            <div class="photo-column">
+              <div class="photo-frame-editor" id="photoDropZone">
+                <img id="photoPreviewImg" src="" alt="Foto do funcionário" hidden />
+                <div id="photoPlaceholder" class="photo-placeholder-editor">
+                  <span>3x4 / Retrato</span>
+                  <small>Clique ou arraste uma foto</small>
+                </div>
+              </div>
+              <input type="file" id="photoInput" accept="image/*" hidden />
+              <div class="photo-buttons">
+                <button type="button" class="btn btn-secondary btn-sm" id="btnChoosePhoto">Escolher Foto</button>
+                <button type="button" class="btn btn-danger-outline btn-sm" id="btnRemovePhoto">Remover</button>
+              </div>
+              <p class="photo-hint">
+                Aceita JPG, PNG ou WebP. A foto é ajustada automaticamente para o quadro padrão do carômetro.
+              </p>
+            </div>
+
+            <!-- Fields Grid -->
+            <div class="fields-grid">
+              <div class="field span-2">
+                <label for="fCodigo">Código / Matrícula</label>
+                <input type="text" id="fCodigo" placeholder="Ex: 12613" maxlength="20" />
+              </div>
+
+              <div class="field span-6">
+                <label for="fNome">Nome Completo *</label>
+                <input type="text" id="fNome" required placeholder="Nome completo do funcionário" />
+              </div>
+
+              <div class="field span-4">
+                <label for="fCpf">CPF</label>
+                <input type="text" id="fCpf" placeholder="000.000.000-00" maxlength="14" />
+              </div>
+
+              <div class="field span-3">
+                <label for="fTipo">Categoria *</label>
+                <select id="fTipo">
+                  <option value="Funcionário">Funcionário</option>
+                  <option value="Professor">Professor</option>
+                </select>
+              </div>
+
+              <div class="field span-4">
+                <label for="fCargo">Cargo / Função (interno)</label>
+                <input type="text" id="fCargo" placeholder="Ex: Secretária, Auxiliar, Porteiro, Professor(a)" />
+              </div>
+
+              <div class="field span-5">
+                <label for="fEmail">E-mail</label>
+                <input type="email" id="fEmail" placeholder="nome@educadventista.org" />
+              </div>
+
+              <div class="field span-12">
+                <label for="fEndereco">Endereço completo</label>
+                <input type="text" id="fEndereco" placeholder="Rua, número, complemento - Bairro - Cidade - UF - CEP 00000-000" />
+              </div>
+
+              <div class="field span-3">
+                <label for="fNascimento">Data de Nascimento</label>
+                <input type="text" id="fNascimento" placeholder="DD/MM/AAAA" maxlength="10" />
+              </div>
+
+              <div class="field span-3">
+                <label for="fSexo">Sexo</label>
+                <select id="fSexo">
+                  <option value="">Selecione...</option>
+                  <option value="Feminino">Feminino</option>
+                  <option value="Masculino">Masculino</option>
+                </select>
+              </div>
+
+              <div class="field span-3">
+                <label for="fRg">RG</label>
+                <input type="text" id="fRg" placeholder="00.000.000-0" />
+              </div>
+
+              <div class="field span-3">
+                <label for="fEmitidoPor">Emitido por</label>
+                <input type="text" id="fEmitidoPor" placeholder="Ex: SSP/SP" />
+              </div>
+
+              <div class="field span-3">
+                <label for="fDataEmissao">Data emissão (RG)</label>
+                <input type="text" id="fDataEmissao" placeholder="DD/MM/AAAA" maxlength="10" />
+              </div>
+
+              <div class="field span-3">
+                <label for="fDataContratacao">Data de contratação</label>
+                <input type="text" id="fDataContratacao" placeholder="DD/MM/AAAA" maxlength="10" />
+              </div>
+
+              <div class="field span-3">
+                <label for="fDataDemissao">Data de demissão</label>
+                <input type="text" id="fDataDemissao" placeholder="Vazio se ativo" maxlength="10" />
+              </div>
+
+              <div class="field span-3 checkbox-field">
+                <label class="checkbox-card">
+                  <input type="checkbox" id="fAssinatura" checked />
+                  <span>Tem assinatura digitalizada</span>
+                </label>
+              </div>
+
+              <div class="field span-12">
+                <label for="fTelefones">Telefones</label>
+                <input type="text" id="fTelefones" placeholder="Ex: Celular - (15) 99999-9999 / WhatsApp - (11) 99999-9999" />
+              </div>
+            </div>
+          </div>
+
+          <div class="form-footer">
+            <div class="form-footer-left">
+              <button type="button" class="btn btn-secondary" id="btnCancelForm">Voltar à Lista</button>
+            </div>
+            <div class="form-footer-right">
+              <button type="submit" class="btn btn-primary" id="btnSaveEmployee">Salvar Cadastro</button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <!-- TAB 3: PRÉVIA DE IMPRESSÃO A4 -->
+      <section id="tab-impressao" class="tab-panel">
+        <div class="print-toolbar card">
+          <div class="print-toolbar-fields">
+            <div class="field">
+              <label for="printTitulo">Título do Carômetro</label>
+              <div class="input-with-presets">
+                <input type="text" id="printTitulo" />
+                <select id="printTituloPreset" aria-label="Modelos de título">
+                  <option value="">Modelos rápidos...</option>
+                  <option value="CARÔMETRO GERAL - 2026 - ANO LETIVO">Carômetro Geral</option>
+                  <option value="FUNCIONÁRIOS ATIVOS - 2026 - ANO LETIVO">Funcionários Ativos</option>
+                  <option value="PROFESSORES ATIVOS - 2026 - ANO LETIVO">Professores Ativos</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label for="printUsuario">Usuário (rodapé)</label>
+              <input type="text" id="printUsuario" />
+            </div>
+            <div class="field field-sm">
+              <label for="printData">Data (rodapé)</label>
+              <input type="text" id="printData" maxlength="10" />
+            </div>
+            <div class="field field-sm">
+              <label for="printScope">Registros</label>
+              <select id="printScope">
+                <option value="filtered">Lista filtrada atual</option>
+                <option value="selected">Somente selecionados</option>
+                <option value="all">Todos cadastrados</option>
+              </select>
+            </div>
+          </div>
+          <div class="print-toolbar-actions">
+            <button class="btn btn-secondary" id="btnPrintBrowser">Imprimir Agora</button>
+            <button class="btn btn-primary-outline" id="btnOpenPdfPrint">Abrir PDF p/ Impressão</button>
+            <button class="btn btn-primary" id="btnDownloadPdfFromPreview">Baixar PDF</button>
+          </div>
+        </div>
+
+        <div id="printPreviewContainer" class="print-preview-stage"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Actual Print Sheet Container (shown only during window.print()) -->
+  <div id="printOnlyRoot" class="print-only-root"></div>
+
+  <!-- Settings & Backup Modal -->
+  <div id="settingsModal" class="modal-backdrop" hidden>
+    <div class="modal card">
+      <div class="modal-header">
+        <h2>Configurações, Rede &amp; Backup</h2>
+        <button class="icon-close" id="btnCloseSettings" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="info-banner">
+          <strong>Banco de Dados SQLite Local (Não sai do ar)</strong>
+          <p>Todos os cadastros e fotos ficam gravados localmente no computador em arquivo único, sem depender de servidores externos ou planos gratuitos.</p>
+          <div class="info-paths" id="systemInfoBox"></div>
+        </div>
+
+        <form id="settingsForm" class="settings-form">
+          <div class="field">
+            <label for="sEscola">Nome da Escola (cabeçalho)</label>
+            <input type="text" id="sEscola" />
+          </div>
+          <div class="field">
+            <label for="sTitulo">Título padrão do relatório</label>
+            <input type="text" id="sTitulo" />
+          </div>
+          <div class="field">
+            <label for="sUsuario">Usuário padrão no rodapé</label>
+            <input type="text" id="sUsuario" />
+          </div>
+          <div class="settings-actions">
+            <button type="submit" class="btn btn-primary">Salvar Padrões</button>
+          </div>
+        </form>
+
+        <hr class="sep" />
+
+        <div class="backup-section">
+          <h3>Cópia de Segurança (Backup)</h3>
+          <p class="muted">Exporte os dados regularmente ou restaure a partir de um arquivo JSON anterior.</p>
+          <div class="backup-buttons">
+            <a href="/api/backup/json" class="btn btn-secondary" download>Baixar Backup (.JSON)</a>
+            <a href="/api/backup/db" class="btn btn-secondary" download>Baixar Banco SQLite (.DB)</a>
+            <label class="btn btn-primary-outline file-btn">
+              Restaurar Backup (.JSON)
+              <input type="file" id="restoreFileInput" accept=".json,application/json" hidden />
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="confirmModal" class="modal-backdrop" hidden>
+    <div class="modal modal-sm card">
+      <div class="modal-header">
+        <h2>Confirmar Exclusão</h2>
+        <button class="icon-close" id="btnCloseConfirm" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMessage">Deseja realmente excluir este funcionário?</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancelDelete">Cancelar</button>
+        <button class="btn btn-danger" id="btnConfirmDelete">Excluir Definitivamente</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
