@@ -19,6 +19,7 @@ const state = {
   isNewMode: false,
   pendingPhotoBlob: null,
   pendingPhotoPreviewUrl: '',
+  rawPhotoObjectUrl: '',
   removePhotoFlag: false,
   pendingDeleteId: null,
   activeTab: 'consulta',
@@ -71,53 +72,118 @@ function maskDate(val) {
   return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
 }
 
-// Convert any uploaded image to a clean 300x350 (6:7 portrait) PNG matching carômetro photo frame
-async function normalizePhotoToPngBlob(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      try {
-        const targetW = 300;
-        const targetH = 350;
-        const canvas = document.createElement('canvas');
-        canvas.width = targetW;
-        canvas.height = targetH;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, targetW, targetH);
+// Interactive 3x4 Photo Cropper (300x350 = 6:7 portrait ratio matching carômetro frame)
+const cropState = {
+  img: null,
+  coverScale: 1,
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+  dragging: false,
+  startClientX: 0,
+  startClientY: 0,
+  startOffsetX: 0,
+  startOffsetY: 0,
+  pendingRawUrl: '',
+};
 
-        const targetRatio = targetW / targetH;
-        const srcRatio = img.width / img.height;
-        let sx = 0, sy = 0, sw = img.width, sh = img.height;
-        if (srcRatio > targetRatio) {
-          sw = img.height * targetRatio;
-          sx = (img.width - sw) / 2;
-        } else if (srcRatio < targetRatio) {
-          sh = img.width / targetRatio;
-          sy = Math.max(0, (img.height - sh) * 0.25); // bias slightly upward to keep head/face centered
-        }
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
-        canvas.toBlob(
-          (blob) => {
-            URL.revokeObjectURL(url);
-            if (!blob) return reject(new Error('Falha ao processar imagem.'));
-            resolve(blob);
-          },
-          'image/png',
-          0.95
-        );
-      } catch (err) {
-        URL.revokeObjectURL(url);
-        reject(err);
+function renderCropCanvas() {
+  const canvas = $('cropCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (!cropState.img) return;
+  const drawW = cropState.img.width * cropState.scale;
+  const drawH = cropState.img.height * cropState.scale;
+  ctx.drawImage(cropState.img, cropState.offsetX, cropState.offsetY, drawW, drawH);
+
+  const pct = Math.round((cropState.scale / cropState.coverScale) * 100);
+  $('cropZoomLabel').textContent = `${pct}%`;
+  $('cropZoomSlider').value = String(cropState.scale / cropState.coverScale);
+}
+
+function resetCropPosition() {
+  if (!cropState.img) return;
+  const canvas = $('cropCanvas');
+  cropState.scale = cropState.coverScale;
+  const drawW = cropState.img.width * cropState.scale;
+  const drawH = cropState.img.height * cropState.scale;
+  cropState.offsetX = (canvas.width - drawW) / 2;
+  // Bias slightly toward top so heads aren't cut off on tall portraits
+  cropState.offsetY = drawH > canvas.height ? Math.max(canvas.height - drawH, -drawH * 0.05) : (canvas.height - drawH) / 2;
+  renderCropCanvas();
+}
+
+function setCropZoomFactor(factor) {
+  if (!cropState.img) return;
+  const clamped = Math.max(0.4, Math.min(3.0, factor));
+  const canvas = $('cropCanvas');
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const newScale = cropState.coverScale * clamped;
+  const ratio = newScale / cropState.scale;
+  cropState.offsetX = cx - (cx - cropState.offsetX) * ratio;
+  cropState.offsetY = cy - (cy - cropState.offsetY) * ratio;
+  cropState.scale = newScale;
+  renderCropCanvas();
+}
+
+function openPhotoCropperFromUrl(sourceUrl, isNewRawUpload = false) {
+  const img = new Image();
+  img.onload = () => {
+    const canvas = $('cropCanvas');
+    cropState.img = img;
+    cropState.coverScale = Math.max(canvas.width / img.width, canvas.height / img.height);
+    cropState.pendingRawUrl = isNewRawUpload ? sourceUrl : '';
+    resetCropPosition();
+    $('photoCropModal').hidden = false;
+  };
+  img.onerror = () => {
+    if (isNewRawUpload) URL.revokeObjectURL(sourceUrl);
+    showToast('Não foi possível abrir a imagem selecionada.', 'error');
+  };
+  img.src = sourceUrl;
+}
+
+function closePhotoCropper(commit = false) {
+  if (!commit && cropState.pendingRawUrl && cropState.pendingRawUrl !== state.rawPhotoObjectUrl) {
+    URL.revokeObjectURL(cropState.pendingRawUrl);
+  }
+  cropState.pendingRawUrl = '';
+  cropState.img = null;
+  $('photoInput').value = '';
+  $('photoCropModal').hidden = true;
+}
+
+function applyPhotoCrop() {
+  if (!cropState.img) return;
+  const canvas = $('cropCanvas');
+  canvas.toBlob(
+    (blob) => {
+      if (!blob) {
+        showToast('Falha ao gerar imagem enquadrada.', 'error');
+        return;
       }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Não foi possível ler a imagem selecionada.'));
-    };
-    img.src = url;
-  });
+      if (cropState.pendingRawUrl) {
+        if (state.rawPhotoObjectUrl && state.rawPhotoObjectUrl !== cropState.pendingRawUrl) {
+          URL.revokeObjectURL(state.rawPhotoObjectUrl);
+        }
+        state.rawPhotoObjectUrl = cropState.pendingRawUrl;
+        cropState.pendingRawUrl = '';
+      }
+      if (state.pendingPhotoPreviewUrl) {
+        URL.revokeObjectURL(state.pendingPhotoPreviewUrl);
+      }
+      state.pendingPhotoBlob = blob;
+      state.pendingPhotoPreviewUrl = URL.createObjectURL(blob);
+      state.removePhotoFlag = false;
+      updatePhotoEditorUI(state.pendingPhotoPreviewUrl);
+      renderLiveCardPreview();
+      closePhotoCropper(true);
+    },
+    'image/png',
+    0.95
+  );
 }
 
 // API Calls
@@ -293,11 +359,18 @@ function openRecordInFicha(index) {
   loadCurrentRecordIntoForm();
 }
 
+function clearPendingPhotoState() {
+  state.pendingPhotoBlob = null;
+  if (state.pendingPhotoPreviewUrl) URL.revokeObjectURL(state.pendingPhotoPreviewUrl);
+  state.pendingPhotoPreviewUrl = '';
+  if (state.rawPhotoObjectUrl) URL.revokeObjectURL(state.rawPhotoObjectUrl);
+  state.rawPhotoObjectUrl = '';
+  state.removePhotoFlag = false;
+}
+
 function startNewEmployeeForm() {
   state.isNewMode = true;
-  state.pendingPhotoBlob = null;
-  state.pendingPhotoPreviewUrl = '';
-  state.removePhotoFlag = false;
+  clearPendingPhotoState();
 
   $('empId').value = '';
   $('fCodigo').value = '';
@@ -335,9 +408,7 @@ function loadCurrentRecordIntoForm() {
   }
 
   state.isNewMode = false;
-  state.pendingPhotoBlob = null;
-  state.pendingPhotoPreviewUrl = '';
-  state.removePhotoFlag = false;
+  clearPendingPhotoState();
 
   const emp = state.employees[state.currentIndex];
   $('empId').value = emp.id;
@@ -389,14 +460,17 @@ function updateNavButtons() {
 function updatePhotoEditorUI(url) {
   const img = $('photoPreviewImg');
   const ph = $('photoPlaceholder');
+  const btnAdjust = $('btnAdjustPhoto');
   if (url) {
     img.src = url;
     img.hidden = false;
     ph.hidden = true;
+    btnAdjust.hidden = false;
   } else {
     img.src = '';
     img.hidden = true;
     ph.hidden = false;
+    btnAdjust.hidden = true;
   }
 }
 
@@ -488,20 +562,20 @@ function renderLiveCardPreview() {
 }
 
 // Photo handling
-async function handleSelectedPhotoFile(file) {
+function handleSelectedPhotoFile(file) {
   if (!file) return;
-  try {
-    const pngBlob = await normalizePhotoToPngBlob(file);
-    if (state.pendingPhotoPreviewUrl) {
-      URL.revokeObjectURL(state.pendingPhotoPreviewUrl);
-    }
-    state.pendingPhotoBlob = pngBlob;
-    state.pendingPhotoPreviewUrl = URL.createObjectURL(pngBlob);
-    state.removePhotoFlag = false;
-    updatePhotoEditorUI(state.pendingPhotoPreviewUrl);
-    renderLiveCardPreview();
-  } catch (err) {
-    showToast(err.message, 'error');
+  const rawUrl = URL.createObjectURL(file);
+  openPhotoCropperFromUrl(rawUrl, true);
+}
+
+function openCurrentPhotoInCropper() {
+  const existing = !state.isNewMode ? state.employees[state.currentIndex] : null;
+  if (state.rawPhotoObjectUrl) {
+    openPhotoCropperFromUrl(state.rawPhotoObjectUrl, false);
+  } else if (state.pendingPhotoPreviewUrl) {
+    openPhotoCropperFromUrl(state.pendingPhotoPreviewUrl, false);
+  } else if (!state.removePhotoFlag && existing?.foto_path) {
+    openPhotoCropperFromUrl(`/uploads/${encodeURIComponent(existing.foto_path)}`, false);
   }
 }
 
@@ -928,10 +1002,17 @@ function bindEvents() {
   );
   $('fAssinatura').addEventListener('change', renderLiveCardPreview);
 
-  // Photo drag/drop/click
+  // Photo drag/drop/click & 3x4 cropper
   const dropZone = $('photoDropZone');
-  dropZone.addEventListener('click', () => $('photoInput').click());
+  dropZone.addEventListener('click', () => {
+    if (!$('photoPreviewImg').hidden) {
+      openCurrentPhotoInCropper();
+    } else {
+      $('photoInput').click();
+    }
+  });
   $('btnChoosePhoto').addEventListener('click', () => $('photoInput').click());
+  $('btnAdjustPhoto').addEventListener('click', openCurrentPhotoInCropper);
   $('photoInput').addEventListener('change', (e) => handleSelectedPhotoFile(e.target.files[0]));
   dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -944,14 +1025,65 @@ function bindEvents() {
     if (e.dataTransfer.files?.[0]) handleSelectedPhotoFile(e.dataTransfer.files[0]);
   });
   $('btnRemovePhoto').addEventListener('click', () => {
-    state.pendingPhotoBlob = null;
-    if (state.pendingPhotoPreviewUrl) URL.revokeObjectURL(state.pendingPhotoPreviewUrl);
-    state.pendingPhotoPreviewUrl = '';
+    clearPendingPhotoState();
     state.removePhotoFlag = true;
     $('photoInput').value = '';
     updatePhotoEditorUI('');
     renderLiveCardPreview();
   });
+
+  // 3x4 Cropper pointer & zoom controls
+  const cropViewport = $('cropViewport');
+  cropViewport.addEventListener('pointerdown', (e) => {
+    if (!cropState.img) return;
+    cropState.dragging = true;
+    cropState.startClientX = e.clientX;
+    cropState.startClientY = e.clientY;
+    cropState.startOffsetX = cropState.offsetX;
+    cropState.startOffsetY = cropState.offsetY;
+    cropViewport.classList.add('dragging');
+    cropViewport.setPointerCapture(e.pointerId);
+  });
+  cropViewport.addEventListener('pointermove', (e) => {
+    if (!cropState.dragging) return;
+    const rect = cropViewport.getBoundingClientRect();
+    const canvas = $('cropCanvas');
+    const factorX = canvas.width / rect.width;
+    const factorY = canvas.height / rect.height;
+    cropState.offsetX = cropState.startOffsetX + (e.clientX - cropState.startClientX) * factorX;
+    cropState.offsetY = cropState.startOffsetY + (e.clientY - cropState.startClientY) * factorY;
+    renderCropCanvas();
+  });
+  const endCropDrag = () => {
+    cropState.dragging = false;
+    cropViewport.classList.remove('dragging');
+  };
+  cropViewport.addEventListener('pointerup', endCropDrag);
+  cropViewport.addEventListener('pointercancel', endCropDrag);
+  cropViewport.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      const currentFactor = cropState.scale / cropState.coverScale;
+      const step = e.deltaY < 0 ? 0.08 : -0.08;
+      setCropZoomFactor(currentFactor + step);
+    },
+    { passive: false }
+  );
+
+  $('cropZoomSlider').addEventListener('input', (e) => {
+    setCropZoomFactor(parseFloat(e.target.value));
+  });
+  $('btnZoomIn').addEventListener('click', () => {
+    setCropZoomFactor(cropState.scale / cropState.coverScale + 0.1);
+  });
+  $('btnZoomOut').addEventListener('click', () => {
+    setCropZoomFactor(cropState.scale / cropState.coverScale - 0.1);
+  });
+  $('btnCropReset').addEventListener('click', resetCropPosition);
+  $('btnApplyCrop').addEventListener('click', applyPhotoCrop);
+  $('btnCancelCrop').addEventListener('click', () => closePhotoCropper(false));
+  $('btnCloseCrop').addEventListener('click', () => closePhotoCropper(false));
 
   $('employeeForm').addEventListener('submit', handleSaveEmployee);
 

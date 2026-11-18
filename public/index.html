@@ -181,10 +181,11 @@
               <input type="file" id="photoInput" accept="image/*" hidden />
               <div class="photo-buttons">
                 <button type="button" class="btn btn-secondary btn-sm" id="btnChoosePhoto">Escolher Foto</button>
+                <button type="button" class="btn btn-primary-outline btn-sm" id="btnAdjustPhoto" hidden>Ajustar 3x4</button>
                 <button type="button" class="btn btn-danger-outline btn-sm" id="btnRemovePhoto">Remover</button>
               </div>
               <p class="photo-hint">
-                Aceita JPG, PNG ou WebP. A foto é ajustada automaticamente para o quadro padrão do carômetro.
+                Aceita JPG, PNG ou WebP. Ao selecionar uma foto, você pode arrastar e dar zoom para enquadrar no quadro 3x4.
               </p>
             </div>
 
@@ -403,6 +404,40 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" id="btnCancelDelete">Cancelar</button>
         <button class="btn btn-danger" id="btnConfirmDelete">Excluir Definitivamente</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photo Crop / Position / Zoom Modal -->
+  <div id="photoCropModal" class="modal-backdrop" hidden>
+    <div class="modal modal-crop card">
+      <div class="modal-header">
+        <h2>Ajustar Foto no Quadro 3x4</h2>
+        <button class="icon-close" id="btnCloseCrop" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="modal-body crop-modal-body">
+        <p class="crop-instructions">
+          Arraste a foto para posicionar e use a rodinha do mouse ou o controle abaixo para aumentar ou diminuir o zoom.
+        </p>
+
+        <div class="crop-stage-wrap">
+          <div class="crop-viewport" id="cropViewport" title="Arraste para mover a foto">
+            <canvas id="cropCanvas" width="300" height="350"></canvas>
+            <div class="crop-guide-overlay" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <div class="crop-controls">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnZoomOut" title="Diminuir zoom">-</button>
+          <input type="range" id="cropZoomSlider" min="0.4" max="3" step="0.01" value="1" aria-label="Zoom da foto" />
+          <button type="button" class="btn btn-secondary btn-sm" id="btnZoomIn" title="Aumentar zoom">+</button>
+          <span class="crop-zoom-label" id="cropZoomLabel">100%</span>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnCropReset">Centralizar</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnCancelCrop">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnApplyCrop">Aplicar Enquadramento</button>
       </div>
     </div>
   </div>
