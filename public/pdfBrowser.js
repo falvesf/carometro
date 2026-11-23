@@ -93,8 +93,8 @@ function fitSingleLine(text, font, size, maxWidth) {
 export async function generateCarometroPdfBlob(employees, options = {}) {
   const escolaNome = options.escola_nome || 'Escola Adventista de Ibiúna';
   const tituloRelatorio = options.titulo_relatorio || 'CARÔMETRO GERAL - 2026 - ANO LETIVO';
-  const usuarioRodape = options.usuario_rodape || '';
-  const dataImpressao = options.data_impressao || formatTodayBR();
+  const usuarioRodape = options.usuario_rodape !== undefined ? String(options.usuario_rodape).trim() : '';
+  const dataImpressao = options.data_impressao !== undefined ? String(options.data_impressao).trim() : formatTodayBR();
 
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(`${escolaNome} - ${tituloRelatorio}`);
@@ -252,24 +252,24 @@ export async function generateCarometroPdfBlob(employees, options = {}) {
 
       // Row 1: Código, Nome, CPF
       const codeStr = emp.codigo ? String(emp.codigo) : '';
-      const codeW = codeStr ? fontBold.widthOfTextAtSize(codeStr, 8.75) : 0;
+      const codeW = codeStr ? fontBold.widthOfTextAtSize(codeStr, 9.2) : 0;
       if (codeStr) {
         page.drawText(codeStr, {
           x: 18,
-          y: PAGE_H - (cardTop + 12.75),
-          size: 8.75,
+          y: PAGE_H - (cardTop + 12.6),
+          size: 9.2,
           font: fontBold,
           color: black,
         });
       }
 
-      const nomeX = codeStr ? Math.max(47.25, 18 + codeW + 6) : 18;
+      const nomeX = codeStr ? Math.max(48.5, 18 + codeW + 6) : 18;
       const nomeMaxW = 402 - nomeX;
-      const nomeFit = fitSingleLine(emp.nome || '', fontBold, 7.8, nomeMaxW);
+      const nomeFit = fitSingleLine(emp.nome || '', fontBold, 9.2, nomeMaxW);
       page.drawText(nomeFit, {
         x: nomeX,
-        y: PAGE_H - (cardTop + 11.9),
-        size: 7.8,
+        y: PAGE_H - (cardTop + 12.6),
+        size: 9.2,
         font: fontBold,
         color: black,
       });
@@ -391,23 +391,27 @@ export async function generateCarometroPdfBlob(employees, options = {}) {
 
     // Footer
     const footerY = PAGE_H - 821.5;
-    page.drawText(dataImpressao, {
-      x: 18,
-      y: footerY,
-      size: 8.95,
-      font: fontReg,
-      color: black,
-    });
+    if (dataImpressao) {
+      page.drawText(dataImpressao, {
+        x: 18,
+        y: footerY,
+        size: 8.95,
+        font: fontReg,
+        color: black,
+      });
+    }
 
-    const userText = `Usuário:${usuarioRodape}`;
-    const userW = fontReg.widthOfTextAtSize(userText, 8.95);
-    page.drawText(userText, {
-      x: (PAGE_W - userW) / 2,
-      y: footerY,
-      size: 8.95,
-      font: fontReg,
-      color: black,
-    });
+    if (usuarioRodape) {
+      const userText = `Usuário:${usuarioRodape}`;
+      const userW = fontReg.widthOfTextAtSize(userText, 8.95);
+      page.drawText(userText, {
+        x: (PAGE_W - userW) / 2,
+        y: footerY,
+        size: 8.95,
+        font: fontReg,
+        color: black,
+      });
+    }
 
     const pageLabel = `${pageIdx + 1}/${totalPages}`;
     const pageW = fontReg.widthOfTextAtSize(pageLabel, 8.95);

@@ -62,54 +62,56 @@
 
   <!-- MAIN APPLICATION -->
   <div id="appShell" class="app-shell no-print" hidden>
-    <!-- Top Bar -->
-    <header class="topbar">
-      <div class="topbar-brand">
-        <img src="./assets/logo.png" alt="Educação Adventista" class="brand-logo" />
-        <div class="brand-divider"></div>
-        <div>
-          <h1>Carômetro Geral</h1>
-          <p class="brand-sub" id="headerSchoolName">Escola Adventista de Ibiúna</p>
+    <div class="sticky-chrome" id="stickyChrome">
+      <!-- Top Bar -->
+      <header class="topbar">
+        <div class="topbar-brand">
+          <img src="./assets/logo.png" alt="Educação Adventista" class="brand-logo" />
+          <div class="brand-divider"></div>
+          <div>
+            <h1>Carômetro Geral</h1>
+            <p class="brand-sub" id="headerSchoolName">Escola Adventista de Ibiúna</p>
+          </div>
         </div>
-      </div>
 
-      <div class="topbar-actions">
-        <span class="db-badge" title="Conectado ao Firebase Firestore na nuvem (24h online)">
-          <span class="db-dot"></span> Firebase Online
-        </span>
-        <span class="user-pill" id="userBadge" title="Usuário conectado"></span>
-        <button class="btn btn-secondary" id="btnSettings" title="Configurações, acessos e backup">
-          Configurações &amp; Backup
-        </button>
-        <button class="btn btn-secondary" id="btnPrintPreview" title="Visualizar e imprimir no padrão oficial">
-          Imprimir
-        </button>
-        <button class="btn btn-primary-outline" id="btnDownloadPdf" title="Gerar arquivo PDF idêntico ao modelo">
-          Gerar PDF
-        </button>
-        <button class="btn btn-primary" id="btnNewEmployee">
-          + Novo Funcionário
-        </button>
-        <button class="btn btn-secondary btn-sm" id="btnLogout" title="Encerrar sessão">Sair</button>
-      </div>
-    </header>
+        <div class="topbar-actions">
+          <span class="db-badge" title="Conectado ao Firebase Firestore na nuvem (24h online)">
+            <span class="db-dot"></span> Firebase Online
+          </span>
+          <span class="user-pill" id="userBadge" title="Usuário conectado"></span>
+          <button class="btn btn-secondary" id="btnSettings" title="Configurações, acessos e backup">
+            Configurações &amp; Backup
+          </button>
+          <button class="btn btn-secondary" id="btnPrintPreview" title="Visualizar e imprimir no padrão oficial">
+            Imprimir
+          </button>
+          <button class="btn btn-primary-outline" id="btnDownloadPdf" title="Gerar arquivo PDF idêntico ao modelo">
+            Gerar PDF
+          </button>
+          <button class="btn btn-primary" id="btnNewEmployee">
+            + Novo Funcionário
+          </button>
+          <button class="btn btn-secondary btn-sm" id="btnLogout" title="Encerrar sessão">Sair</button>
+        </div>
+      </header>
 
-    <!-- Admin Pending Requests Banner -->
-    <div id="adminRequestsBanner" class="admin-banner" hidden></div>
+      <!-- Admin Pending Requests Banner -->
+      <div id="adminRequestsBanner" class="admin-banner" hidden></div>
 
-    <!-- Stats Strip + Navigation Tabs -->
-    <div class="subbar">
-      <nav class="tabs" role="tablist">
-        <button class="tab active" data-tab="consulta" role="tab">Consulta &amp; Lista</button>
-        <button class="tab" data-tab="ficha" role="tab">Ficha / Navegar Registros</button>
-        <button class="tab" data-tab="impressao" role="tab">Prévia de Impressão (Modelo A4)</button>
-      </nav>
+      <!-- Stats Strip + Navigation Tabs -->
+      <div class="subbar">
+        <nav class="tabs" role="tablist">
+          <button class="tab active" data-tab="consulta" role="tab">Consulta &amp; Lista</button>
+          <button class="tab" data-tab="ficha" role="tab">Ficha / Navegar Registros</button>
+          <button class="tab" data-tab="impressao" role="tab">Prévia de Impressão (Modelo A4)</button>
+        </nav>
 
-      <div class="stats-pills" id="statsPills">
-        <span class="stat-pill">Total: <strong id="statTotal">0</strong></span>
-        <span class="stat-pill stat-prof">Professores: <strong id="statProf">0</strong></span>
-        <span class="stat-pill stat-func">Funcionários: <strong id="statFunc">0</strong></span>
-        <span class="stat-pill stat-active">Ativos: <strong id="statAtivos">0</strong></span>
+        <div class="stats-pills" id="statsPills">
+          <span class="stat-pill">Total: <strong id="statTotal">0</strong></span>
+          <span class="stat-pill stat-prof">Professores: <strong id="statProf">0</strong></span>
+          <span class="stat-pill stat-func">Funcionários: <strong id="statFunc">0</strong></span>
+          <span class="stat-pill stat-active">Ativos: <strong id="statAtivos">0</strong></span>
+        </div>
       </div>
     </div>
 
@@ -286,9 +288,39 @@
                 <input type="email" id="fEmail" placeholder="nome@educadventista.org" />
               </div>
 
-              <div class="field span-12">
-                <label for="fEndereco">Endereço completo</label>
-                <input type="text" id="fEndereco" placeholder="Rua, número, complemento - Bairro - Cidade - UF - CEP 00000-000" />
+              <div class="field span-2">
+                <label for="fEndCep">CEP</label>
+                <input type="text" id="fEndCep" placeholder="00000-000" maxlength="9" />
+              </div>
+
+              <div class="field span-6">
+                <label for="fEndRua">Endereço (Rua / Av.)</label>
+                <input type="text" id="fEndRua" placeholder="Ex: Rua Francisco Justino de Azevedo" />
+              </div>
+
+              <div class="field span-2">
+                <label for="fEndNumero">Número</label>
+                <input type="text" id="fEndNumero" placeholder="Ex: 80 ou S/N" />
+              </div>
+
+              <div class="field span-2">
+                <label for="fEndComplemento">Complemento</label>
+                <input type="text" id="fEndComplemento" placeholder="Ex: Casa 02, Ap 52" />
+              </div>
+
+              <div class="field span-5">
+                <label for="fEndBairro">Bairro</label>
+                <input type="text" id="fEndBairro" placeholder="Ex: Centro" />
+              </div>
+
+              <div class="field span-5">
+                <label for="fEndCidade">Cidade</label>
+                <input type="text" id="fEndCidade" placeholder="Ex: Ibiúna" />
+              </div>
+
+              <div class="field span-2">
+                <label for="fEndUf">UF</label>
+                <input type="text" id="fEndUf" placeholder="SP" maxlength="2" style="text-transform: uppercase;" />
               </div>
 
               <div class="field span-3">
@@ -375,12 +407,12 @@
               </div>
             </div>
             <div class="field">
-              <label for="printUsuario">Usuário (rodapé)</label>
-              <input type="text" id="printUsuario" />
+              <label for="printUsuario">Usuário (rodapé — vazio p/ omitir)</label>
+              <input type="text" id="printUsuario" placeholder="Deixe vazio para não exibir" />
             </div>
             <div class="field field-sm">
-              <label for="printData">Data (rodapé)</label>
-              <input type="text" id="printData" maxlength="10" />
+              <label for="printData">Data (rodapé — vazio p/ omitir)</label>
+              <input type="text" id="printData" maxlength="10" placeholder="DD/MM/AAAA ou vazio" />
             </div>
             <div class="field field-sm">
               <label for="printScope">Registros</label>

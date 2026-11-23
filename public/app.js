@@ -117,6 +117,148 @@ function maskPhone(val) {
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 }
 
+function maskCep(val) {
+  const d = val.replace(/\D/g, '').slice(0, 8);
+  if (d.length <= 5) return d;
+  return `${d.slice(0, 5)}-${d.slice(5)}`;
+}
+
+function parseAddressString(raw) {
+  const empty = { cep: '', rua: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '' };
+  let text = String(raw || '').trim();
+  if (!text) return empty;
+
+  let cep = '';
+  const cepMatch = text.match(/(?:-\s*)?CEP\s*[:\-]?\s*(\d{5}-?\d{3})/i);
+  if (cepMatch) {
+    cep = maskCep(cepMatch[1]);
+    text = text.replace(cepMatch[0], '').trim();
+  }
+
+  const parts = text.split(/\s+-\s+/).map((p) => p.trim()).filter(Boolean);
+  let uf = '';
+  let cidade = '';
+  let bairro = '';
+  let streetPart = '';
+
+  if (parts.length > 0 && /^[A-Za-z]{2}$/.test(parts[parts.length - 1])) {
+    uf = parts.pop().toUpperCase();
+  }
+  if (parts.length >= 4) {
+    cidade = parts.pop();
+    bairro = parts.pop();
+    streetPart = parts.join(' - ');
+  } else if (parts.length === 3) {
+    cidade = parts[2];
+    bairro = parts[1];
+    streetPart = parts[0];
+  } else if (parts.length === 2) {
+    bairro = parts[1];
+    streetPart = parts[0];
+  } else if (parts.length === 1) {
+    streetPart = parts[0];
+  }
+
+  let rua = streetPart;
+  let numero = '';
+  let complemento = '';
+  const commaIdx = streetPart.indexOf(',');
+  if (commaIdx >= 0) {
+    rua = streetPart.slice(0, commaIdx).trim();
+    const rest = streetPart.slice(commaIdx + 1).trim();
+    const numMatch = rest.match(/^(\d+[A-Za-z]?|S\/N|s\/n)(?:\s+(.+))?$/);
+    if (numMatch) {
+      numero = numMatch[1];
+      complemento = (numMatch[2] || '').trim();
+    } else {
+      numero = rest;
+    }
+  }
+
+  return { cep, rua, numero, complemento, bairro, cidade, uf };
+}
+
+function composeAddressString(parts) {
+  const rua = (parts.rua || '').trim();
+  const numero = (parts.numero || '').trim();
+  const complemento = (parts.complemento || '').trim();
+  const bairro = (parts.bairro || '').trim();
+  const cidade = (parts.cidade || '').trim();
+  const uf = (parts.uf || '').trim().toUpperCase();
+  const cep = (parts.cep || '').trim();
+
+  let streetLine = rua;
+  if (numero || complemento) {
+    const numComp = [numero, complemento].filter(Boolean).join(' ');
+    streetLine = streetLine ? `${streetLine}, ${numComp}` : numComp;
+  }
+
+  const segments = [
+    streetLine,
+    bairro,
+    cidade,
+    uf,
+    cep ? `CEP ${cep}` : '',
+  ].filter(Boolean);
+
+  return segments.join(' - ');
+}
+
+function getAddressParts() {
+  return {
+    cep: $('fEndCep').value.trim(),
+    rua: $('fEndRua').value.trim(),
+    numero: $('fEndNumero').value.trim(),
+    complemento: $('fEndComplemento').value.trim(),
+    bairro: $('fEndBairro').value.trim(),
+    cidade: $('fEndCidade').value.trim(),
+    uf: $('fEndUf').value.trim().toUpperCase(),
+  };
+}
+
+function setAddressFields(emp) {
+  const parts =
+    emp && emp.endereco_partes && typeof emp.endereco_partes === 'object'
+      ? {
+          cep: emp.endereco_partes.cep || '',
+          rua: emp.endereco_partes.rua || '',
+          numero: emp.endereco_partes.numero || '',
+          complemento: emp.endereco_partes.complemento || '',
+          bairro: emp.endereco_partes.bairro || '',
+          cidade: emp.endereco_partes.cidade || '',
+          uf: emp.endereco_partes.uf || '',
+        }
+      : parseAddressString(emp?.endereco || '');
+
+  $('fEndCep').value = parts.cep;
+  $('fEndRua').value = parts.rua;
+  $('fEndNumero').value = parts.numero;
+  $('fEndComplemento').value = parts.complemento;
+  $('fEndBairro').value = parts.bairro;
+  $('fEndCidade').value = parts.cidade;
+  $('fEndUf').value = parts.uf;
+}
+
+let lastCepFetched = '';
+async function lookupCepIfComplete(cepMasked) {
+  const digits = cepMasked.replace(/\D/g, '');
+  if (digits.length !== 8 || digits === lastCepFetched) return;
+  lastCepFetched = digits;
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.erro) return;
+    if (data.logradouro && !$('fEndRua').value.trim()) $('fEndRua').value = data.logradouro;
+    if (data.bairro && !$('fEndBairro').value.trim()) $('fEndBairro').value = data.bairro;
+    if (data.localidade && !$('fEndCidade').value.trim()) $('fEndCidade').value = data.localidade;
+    if (data.uf && !$('fEndUf').value.trim()) $('fEndUf').value = data.uf;
+    renderLiveCardPreview();
+  } catch {
+    // Ignore offline / lookup failures silently
+  }
+}
+
 const CARGOS_LIST = [
   'Administrador(a) Escolar',
   'Administrador(a) Financeiro',
@@ -496,8 +638,11 @@ async function enterMainApp(user, isAdmin) {
   showScreen('app');
   $('userBadge').textContent = user.email || user.displayName || 'Usuário';
   $('adminAccessSection').hidden = !isAdmin;
-  if (!$('printData').value) {
+  if (!$('printData').dataset.edited) {
     $('printData').value = formatTodayBR();
+  }
+  if (!$('printUsuario').dataset.edited) {
+    $('printUsuario').value = user.email || '';
   }
 
   // Subscribe to settings
@@ -508,9 +653,6 @@ async function enterMainApp(user, isAdmin) {
     $('headerSchoolName').textContent = state.settings.escola_nome || 'Escola Adventista de Ibiúna';
     if (!$('printTitulo').dataset.edited) {
       $('printTitulo').value = state.settings.titulo_relatorio || 'CARÔMETRO GERAL - 2026 - ANO LETIVO';
-    }
-    if (!$('printUsuario').dataset.edited) {
-      $('printUsuario').value = state.settings.usuario_rodape || '';
     }
     if (state.activeTab === 'impressao') renderPrintPreview();
   });
@@ -934,7 +1076,7 @@ function startNewEmployeeForm() {
   $('fTipo').value = state.filters.tipo === 'Professor' ? 'Professor' : 'Funcionário';
   setCargoValue(state.filters.tipo === 'Professor' ? 'Professor(a)' : '');
   $('fEmail').value = '';
-  $('fEndereco').value = '';
+  setAddressFields(null);
   $('fNascimento').value = '';
   $('fSexo').value = '';
   $('fRg').value = '';
@@ -973,7 +1115,7 @@ function loadCurrentRecordIntoForm() {
   $('fTipo').value = emp.tipo || 'Funcionário';
   setCargoValue(emp.cargo || '');
   $('fEmail').value = emp.email || '';
-  $('fEndereco').value = emp.endereco || '';
+  setAddressFields(emp);
   $('fNascimento').value = emp.data_nascimento || '';
   $('fSexo').value = emp.sexo || '';
   $('fRg').value = emp.rg || '';
@@ -1037,6 +1179,7 @@ function getFormEmployeeSnapshot() {
     photoData = existing.foto_data;
   }
 
+  const addrParts = getAddressParts();
   return {
     id: $('empId').value || null,
     codigo: $('fCodigo').value.trim(),
@@ -1045,7 +1188,8 @@ function getFormEmployeeSnapshot() {
     tipo: $('fTipo').value,
     cargo: getCargoValue(),
     email: $('fEmail').value.trim(),
-    endereco: $('fEndereco').value.trim(),
+    endereco_partes: addrParts,
+    endereco: composeAddressString(addrParts),
     data_nascimento: $('fNascimento').value.trim(),
     sexo: $('fSexo').value,
     rg: $('fRg').value.trim(),
@@ -1145,6 +1289,7 @@ async function handleSaveEmployee(e) {
     tipo: snap.tipo,
     cargo: snap.cargo,
     email: snap.email,
+    endereco_partes: snap.endereco_partes,
     endereco: snap.endereco,
     data_nascimento: snap.data_nascimento,
     sexo: snap.sexo,
@@ -1246,9 +1391,9 @@ function estimateHtmlCardHeightPt(emp) {
 
 function buildA4PagesHtml(employees) {
   const escola = state.settings.escola_nome || 'Escola Adventista de Ibiúna';
-  const titulo = $('printTitulo').value || state.settings.titulo_relatorio;
-  const usuario = $('printUsuario').value || state.settings.usuario_rodape;
-  const dataStr = $('printData').value || formatTodayBR();
+  const titulo = $('printTitulo').value.trim() || state.settings.titulo_relatorio;
+  const usuario = $('printUsuario').value.trim();
+  const dataStr = $('printData').value.trim();
 
   const pages = [];
   let current = [];
@@ -1280,8 +1425,8 @@ function buildA4PagesHtml(employees) {
           </div>
           <div class="cm-cards">${cardsHtml}</div>
           <div class="cm-footer">
-            <span>${escapeHtml(dataStr)}</span>
-            <span>Usuário:${escapeHtml(usuario)}</span>
+            <span>${dataStr ? escapeHtml(dataStr) : ''}</span>
+            <span>${usuario ? `Usuário:${escapeHtml(usuario)}` : ''}</span>
             <span>${pIdx + 1}/${totalPages}</span>
           </div>
         </div>
@@ -1309,9 +1454,9 @@ async function downloadPdf(overrideScope = null, specificIds = null, inline = fa
     showToast('Gerando PDF...');
     const blob = await generateCarometroPdfBlob(list, {
       escola_nome: state.settings.escola_nome || 'Escola Adventista de Ibiúna',
-      titulo_relatorio: $('printTitulo').value || state.settings.titulo_relatorio,
-      usuario_rodape: $('printUsuario').value || state.settings.usuario_rodape,
-      data_impressao: $('printData').value || formatTodayBR(),
+      titulo_relatorio: $('printTitulo').value.trim() || state.settings.titulo_relatorio,
+      usuario_rodape: $('printUsuario').value.trim(),
+      data_impressao: $('printData').value.trim(),
     });
     const url = URL.createObjectURL(blob);
     if (inline) {
@@ -1614,12 +1759,20 @@ function bindEvents() {
       renderLiveCardPreview();
     });
   });
-  ['fCodigo', 'fNome', 'fTipo', 'fEmail', 'fEndereco', 'fSexo', 'fRg', 'fEmitidoPor'].forEach(
+  ['fCodigo', 'fNome', 'fTipo', 'fEmail', 'fEndRua', 'fEndNumero', 'fEndComplemento', 'fEndBairro', 'fEndCidade', 'fEndUf', 'fSexo', 'fRg', 'fEmitidoPor'].forEach(
     (id) => {
-      $(id).addEventListener('input', renderLiveCardPreview);
+      $(id).addEventListener('input', () => {
+        if (id === 'fEndUf') $(id).value = $(id).value.toUpperCase();
+        renderLiveCardPreview();
+      });
       $(id).addEventListener('change', renderLiveCardPreview);
     }
   );
+  $('fEndCep').addEventListener('input', (e) => {
+    e.target.value = maskCep(e.target.value);
+    renderLiveCardPreview();
+    lookupCepIfComplete(e.target.value);
+  });
   $('fCargoSelect').addEventListener('change', (e) => {
     const isOther = e.target.value === CARGO_OTHER_VALUE;
     $('fCargoCustom').hidden = !isOther;
@@ -1737,10 +1890,11 @@ function bindEvents() {
     $('printUsuario').dataset.edited = '1';
     renderPrintPreview();
   });
-  ['printData', 'printScope'].forEach((id) => {
-    $(id).addEventListener('input', renderPrintPreview);
-    $(id).addEventListener('change', renderPrintPreview);
+  $('printData').addEventListener('input', () => {
+    $('printData').dataset.edited = '1';
+    renderPrintPreview();
   });
+  $('printScope').addEventListener('change', renderPrintPreview);
   $('btnPrintBrowser').addEventListener('click', () => triggerBrowserPrint());
   $('btnOpenPdfPrint').addEventListener('click', () => downloadPdf(null, null, true));
   $('btnDownloadPdfFromPreview').addEventListener('click', () => downloadPdf(null, null, false));
@@ -1753,6 +1907,16 @@ function bindEvents() {
   $('btnCloseConfirm').addEventListener('click', () => ($('confirmModal').hidden = true));
   $('btnCancelDelete').addEventListener('click', () => ($('confirmModal').hidden = true));
   $('btnConfirmDelete').addEventListener('click', confirmDeleteEmployee);
+}
+
+// Keep sticky offset aligned with actual header height
+const stickyChromeEl = $('stickyChrome');
+if (stickyChromeEl && typeof ResizeObserver !== 'undefined') {
+  const syncChromeHeight = () => {
+    document.documentElement.style.setProperty('--chrome-h', `${stickyChromeEl.offsetHeight}px`);
+  };
+  new ResizeObserver(syncChromeHeight).observe(stickyChromeEl);
+  syncChromeHeight();
 }
 
 // Init
