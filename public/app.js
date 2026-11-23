@@ -955,6 +955,7 @@ function applyFiltersAndRender() {
 
   renderStats();
   renderTable();
+  updatePrintScopeOptions();
   if (state.activeTab === 'ficha' && !state.isNewMode) {
     loadCurrentRecordIntoForm();
   }
@@ -978,6 +979,7 @@ function renderTable() {
   const selectedCount = state.selectedIds.size;
   $('selectedCount').textContent = selectedCount;
   $('selectedBadge').hidden = selectedCount === 0;
+  updatePrintScopeOptions();
 
   const allChecked =
     state.employees.length > 0 && state.employees.every((e) => state.selectedIds.has(e.id));
@@ -1077,6 +1079,7 @@ function switchTab(tabName) {
   if (tabName === 'ficha') {
     if (!state.isNewMode) loadCurrentRecordIntoForm();
   } else if (tabName === 'impressao') {
+    updatePrintScopeOptions();
     renderPrintPreview();
   }
 }
@@ -1393,6 +1396,38 @@ async function confirmDeleteEmployee() {
 // =========================================================
 // Print A4 & Client-Side PDF Generation
 // =========================================================
+function updatePrintScopeOptions() {
+  const sel = $('printScope');
+  if (!sel) return;
+  const prev = sel.value || 'filtered';
+  const selectedCount = state.selectedIds.size;
+
+  const opts = [
+    { value: 'filtered', label: 'Lista filtrada atual' },
+    { value: 'all_ativos', label: 'Todos Ativos (Geral / Misturado)' },
+    { value: 'professores', label: 'Somente Professores (Ativos)' },
+    { value: 'funcionarios', label: 'Somente Funcionários (Ativos)' },
+    { value: 'all', label: 'Todos cadastrados (incl. demitidos)' },
+  ];
+
+  if (selectedCount > 0) {
+    opts.splice(1, 0, {
+      value: 'selected',
+      label: `Somente selecionados (${selectedCount})`,
+    });
+  }
+
+  sel.innerHTML = opts
+    .map((o) => `<option value="${o.value}">${escapeHtml(o.label)}</option>`)
+    .join('');
+
+  if (opts.some((o) => o.value === prev)) {
+    sel.value = prev;
+  } else {
+    sel.value = 'filtered';
+  }
+}
+
 function getEmployeesForPrint(overrideScope = null, specificIds = null) {
   const scope = overrideScope || $('printScope').value || 'filtered';
   if (specificIds && specificIds.length > 0) {
@@ -1400,10 +1435,34 @@ function getEmployeesForPrint(overrideScope = null, specificIds = null) {
   }
   if (scope === 'selected') {
     if (state.selectedIds.size === 0) {
-      showToast('Nenhum funcionário selecionado. Mostrando lista filtrada.', 'error');
       return state.employees;
     }
-    return state.employees.filter((e) => state.selectedIds.has(e.id));
+    return sortEmployeeList(
+      state.allEmployees.filter((e) => state.selectedIds.has(e.id)),
+      state.filters.order
+    );
+  }
+  if (scope === 'professores') {
+    return sortEmployeeList(
+      state.allEmployees.filter(
+        (e) => e.tipo === 'Professor' && !(e.data_demissao || '').trim()
+      ),
+      state.filters.order
+    );
+  }
+  if (scope === 'funcionarios') {
+    return sortEmployeeList(
+      state.allEmployees.filter(
+        (e) => e.tipo !== 'Professor' && !(e.data_demissao || '').trim()
+      ),
+      state.filters.order
+    );
+  }
+  if (scope === 'all_ativos') {
+    return sortEmployeeList(
+      state.allEmployees.filter((e) => !(e.data_demissao || '').trim()),
+      state.filters.order
+    );
   }
   if (scope === 'all') {
     return sortEmployeeList(state.allEmployees, state.filters.order);
@@ -1697,7 +1756,13 @@ function bindEvents() {
 
   // Topbar buttons
   $('btnNewEmployee').addEventListener('click', startNewEmployeeForm);
-  $('btnPrintPreview').addEventListener('click', () => switchTab('impressao'));
+  $('btnPrintPreview').addEventListener('click', () => {
+    updatePrintScopeOptions();
+    if (state.selectedIds.size > 0) {
+      $('printScope').value = 'selected';
+    }
+    switchTab('impressao');
+  });
   $('btnDownloadPdf').addEventListener('click', () => {
     const scope = state.selectedIds.size > 0 ? 'selected' : 'filtered';
     downloadPdf(scope);
@@ -1758,11 +1823,13 @@ function bindEvents() {
       state.selectedIds.clear();
     }
     renderTable();
+    updatePrintScopeOptions();
   });
 
   $('btnClearSelection').addEventListener('click', () => {
     state.selectedIds.clear();
     renderTable();
+    updatePrintScopeOptions();
   });
 
   $('btnPrintFiltered').addEventListener('click', () => {
@@ -1954,7 +2021,18 @@ function bindEvents() {
     $('printData').dataset.edited = '1';
     renderPrintPreview();
   });
-  $('printScope').addEventListener('change', renderPrintPreview);
+  $('printScope').addEventListener('change', (e) => {
+    if (!$('printTitulo').dataset.edited) {
+      if (e.target.value === 'professores') {
+        $('printTitulo').value = 'PROFESSORES ATIVOS - 2026 - ANO LETIVO';
+      } else if (e.target.value === 'funcionarios') {
+        $('printTitulo').value = 'FUNCIONÁRIOS ATIVOS - 2026 - ANO LETIVO';
+      } else if (e.target.value === 'all_ativos' || e.target.value === 'all') {
+        $('printTitulo').value = state.settings.titulo_relatorio || 'CARÔMETRO GERAL - 2026 - ANO LETIVO';
+      }
+    }
+    renderPrintPreview();
+  });
   $('btnPrintBrowser').addEventListener('click', () => triggerBrowserPrint());
   $('btnOpenPdfPrint').addEventListener('click', () => downloadPdf(null, null, true));
   $('btnDownloadPdfFromPreview').addEventListener('click', () => downloadPdf(null, null, false));
