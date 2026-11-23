@@ -4,14 +4,68 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Carômetro Geral — Escola Adventista de Ibiúna</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div class="app-shell no-print">
+  <!-- AUTH / LOGIN SCREEN -->
+  <div id="authScreen" class="auth-screen no-print">
+    <div class="auth-card card">
+      <img src="./assets/logo.png" alt="Educação Adventista" class="auth-logo" />
+      <h1>Carômetro Geral</h1>
+      <p class="auth-sub">Escola Adventista de Ibiúna — Acesso Restrito</p>
+
+      <button type="button" class="btn btn-google" id="btnGoogleLogin">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"/>
+          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"/>
+          <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"/>
+          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"/>
+        </svg>
+        Entrar com Google
+      </button>
+
+      <div class="auth-divider"><span>ou entre com e-mail e senha</span></div>
+
+      <form id="emailLoginForm" class="auth-form">
+        <div class="field">
+          <label for="loginEmail">E-mail</label>
+          <input type="email" id="loginEmail" required placeholder="usuario@educadventista.org" autocomplete="username" />
+        </div>
+        <div class="field">
+          <label for="loginPassword">Senha</label>
+          <input type="password" id="loginPassword" required placeholder="Sua senha" autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn btn-primary" id="btnEmailLogin">Entrar</button>
+      </form>
+
+      <p id="authError" class="auth-error" hidden></p>
+    </div>
+  </div>
+
+  <!-- PENDING AUTHORIZATION SCREEN -->
+  <div id="pendingScreen" class="auth-screen no-print" hidden>
+    <div class="auth-card card">
+      <img src="./assets/logo.png" alt="Educação Adventista" class="auth-logo" />
+      <h1 id="pendingTitle">Aguardando Autorização</h1>
+      <p class="auth-sub" id="pendingUserEmail"></p>
+      <div class="pending-box" id="pendingBox">
+        <p id="pendingMessage">
+          Sua solicitação de acesso foi enviada ao administrador do sistema. Assim que ele autorizar seu e-mail, esta tela será liberada automaticamente.
+        </p>
+      </div>
+      <div class="pending-actions">
+        <button type="button" class="btn btn-primary-outline" id="btnRetryAuthCheck">Verificar novamente</button>
+        <button type="button" class="btn btn-secondary" id="btnPendingLogout">Sair / Trocar conta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN APPLICATION -->
+  <div id="appShell" class="app-shell no-print" hidden>
     <!-- Top Bar -->
     <header class="topbar">
       <div class="topbar-brand">
-        <img src="/assets/logo.png" alt="Educação Adventista" class="brand-logo" />
+        <img src="./assets/logo.png" alt="Educação Adventista" class="brand-logo" />
         <div class="brand-divider"></div>
         <div>
           <h1>Carômetro Geral</h1>
@@ -20,10 +74,11 @@
       </div>
 
       <div class="topbar-actions">
-        <span class="db-badge" title="Banco de dados SQLite local — funciona sem internet e não sai do ar">
-          <span class="db-dot"></span> Banco Local Ativo
+        <span class="db-badge" title="Conectado ao Firebase Firestore na nuvem (24h online)">
+          <span class="db-dot"></span> Firebase Online
         </span>
-        <button class="btn btn-secondary" id="btnSettings" title="Configurações do relatório e backup">
+        <span class="user-pill" id="userBadge" title="Usuário conectado"></span>
+        <button class="btn btn-secondary" id="btnSettings" title="Configurações, acessos e backup">
           Configurações &amp; Backup
         </button>
         <button class="btn btn-secondary" id="btnPrintPreview" title="Visualizar e imprimir no padrão oficial">
@@ -35,8 +90,12 @@
         <button class="btn btn-primary" id="btnNewEmployee">
           + Novo Funcionário
         </button>
+        <button class="btn btn-secondary btn-sm" id="btnLogout" title="Encerrar sessão">Sair</button>
       </div>
     </header>
+
+    <!-- Admin Pending Requests Banner -->
+    <div id="adminRequestsBanner" class="admin-banner" hidden></div>
 
     <!-- Stats Strip + Navigation Tabs -->
     <div class="subbar">
@@ -341,18 +400,25 @@
   <!-- Actual Print Sheet Container (shown only during window.print()) -->
   <div id="printOnlyRoot" class="print-only-root"></div>
 
-  <!-- Settings & Backup Modal -->
+  <!-- Settings, Access Control & Backup Modal -->
   <div id="settingsModal" class="modal-backdrop" hidden>
     <div class="modal card">
       <div class="modal-header">
-        <h2>Configurações, Rede &amp; Backup</h2>
+        <h2>Configurações, Acessos &amp; Backup</h2>
         <button class="icon-close" id="btnCloseSettings" aria-label="Fechar">&times;</button>
       </div>
       <div class="modal-body">
         <div class="info-banner">
-          <strong>Banco de Dados SQLite Local (Não sai do ar)</strong>
-          <p>Todos os cadastros e fotos ficam gravados localmente no computador em arquivo único, sem depender de servidores externos ou planos gratuitos.</p>
-          <div class="info-paths" id="systemInfoBox"></div>
+          <strong>Firebase Cloud Firestore Ativo (24h online)</strong>
+          <p>Os cadastros e fotos ficam salvos com segurança na nuvem (projeto <code>carometro-db</code>), protegidos por login e autorização do administrador.</p>
+        </div>
+
+        <!-- Admin Access Control -->
+        <div id="adminAccessSection" class="access-section" hidden>
+          <h3>Controle de Acessos (Administrador)</h3>
+          <p class="muted">Autorize ou revogue os usuários que podem visualizar e cadastrar funcionários.</p>
+          <div id="accessManagerList" class="access-list"></div>
+          <hr class="sep" />
         </div>
 
         <form id="settingsForm" class="settings-form">
@@ -376,13 +442,12 @@
         <hr class="sep" />
 
         <div class="backup-section">
-          <h3>Cópia de Segurança (Backup)</h3>
-          <p class="muted">Exporte os dados regularmente ou restaure a partir de um arquivo JSON anterior.</p>
+          <h3>Cópia de Segurança (Backup &amp; Importação)</h3>
+          <p class="muted">Exporte os dados com fotos em JSON ou importe um arquivo de backup (incluindo o arquivo de migração inicial).</p>
           <div class="backup-buttons">
-            <a href="/api/backup/json" class="btn btn-secondary" download>Baixar Backup (.JSON)</a>
-            <a href="/api/backup/db" class="btn btn-secondary" download>Baixar Banco SQLite (.DB)</a>
+            <button type="button" class="btn btn-secondary" id="btnDownloadJsonBackup">Baixar Backup (.JSON)</button>
             <label class="btn btn-primary-outline file-btn">
-              Restaurar Backup (.JSON)
+              Importar / Restaurar Backup (.JSON)
               <input type="file" id="restoreFileInput" accept=".json,application/json" hidden />
             </label>
           </div>
@@ -445,6 +510,6 @@
   <!-- Toast notification -->
   <div id="toast" class="toast" hidden></div>
 
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>

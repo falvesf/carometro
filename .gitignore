@@ -5,6 +5,7 @@ node_modules/
 data/
 seed/
 carometro.pdf
+migracao-*.json
 *.db
 *.db-*
 

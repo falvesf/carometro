@@ -1,11 +1,46 @@
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js';
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  writeBatch,
+  serverTimestamp,
+} from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
+
+import { firebaseConfig, ADMIN_EMAILS } from './firebaseConfig.js';
+import { generateCarometroPdfBlob } from './pdfBrowser.js';
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const googleProvider = new GoogleAuthProvider();
+
+const ADMIN_SET = new Set(ADMIN_EMAILS.map((e) => e.toLowerCase()));
+
 const state = {
+  user: null,
+  isAdmin: false,
+  allEmployees: [],
   employees: [],
   stats: { total: 0, professores: 0, funcionarios: 0, ativos: 0, demitidos: 0 },
   settings: {
     escola_nome: 'Escola Adventista de Ibiúna',
     titulo_relatorio: 'CARÔMETRO GERAL - 2026 - ANO LETIVO',
     usuario_rodape: 'daniele.moraes@adm.educadventista.org',
-    ordenacao_padrao: 'nome_asc',
   },
   filters: {
     q: '',
@@ -17,15 +52,16 @@ const state = {
   selectedIds: new Set(),
   currentIndex: 0,
   isNewMode: false,
-  pendingPhotoBlob: null,
-  pendingPhotoPreviewUrl: '',
+  pendingPhotoDataUrl: '',
   rawPhotoObjectUrl: '',
   removePhotoFlag: false,
   pendingDeleteId: null,
   activeTab: 'consulta',
+  accessRequests: [],
+  authorizedUsers: [],
+  unsubs: [],
 };
 
-// DOM refs
 const $ = (id) => document.getElementById(id);
 
 function escapeHtml(str) {
@@ -53,7 +89,7 @@ function showToast(msg, type = 'success') {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     el.hidden = true;
-  }, 3200);
+  }, 3400);
 }
 
 // Masks
@@ -72,7 +108,9 @@ function maskDate(val) {
   return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
 }
 
-// Interactive 3x4 Photo Cropper (300x350 = 6:7 portrait ratio matching carômetro frame)
+// =========================================================
+// Interactive 3x4 Photo Cropper (300x350 = 6:7 portrait)
+// =========================================================
 const cropState = {
   img: null,
   coverScale: 1,
@@ -109,8 +147,8 @@ function resetCropPosition() {
   const drawW = cropState.img.width * cropState.scale;
   const drawH = cropState.img.height * cropState.scale;
   cropState.offsetX = (canvas.width - drawW) / 2;
-  // Bias slightly toward top so heads aren't cut off on tall portraits
-  cropState.offsetY = drawH > canvas.height ? Math.max(canvas.height - drawH, -drawH * 0.05) : (canvas.height - drawH) / 2;
+  cropState.offsetY =
+    drawH > canvas.height ? Math.max(canvas.height - drawH, -drawH * 0.05) : (canvas.height - drawH) / 2;
   renderCropCanvas();
 }
 
@@ -158,66 +196,408 @@ function closePhotoCropper(commit = false) {
 function applyPhotoCrop() {
   if (!cropState.img) return;
   const canvas = $('cropCanvas');
-  canvas.toBlob(
-    (blob) => {
-      if (!blob) {
-        showToast('Falha ao gerar imagem enquadrada.', 'error');
-        return;
-      }
-      if (cropState.pendingRawUrl) {
-        if (state.rawPhotoObjectUrl && state.rawPhotoObjectUrl !== cropState.pendingRawUrl) {
-          URL.revokeObjectURL(state.rawPhotoObjectUrl);
-        }
-        state.rawPhotoObjectUrl = cropState.pendingRawUrl;
-        cropState.pendingRawUrl = '';
-      }
-      if (state.pendingPhotoPreviewUrl) {
-        URL.revokeObjectURL(state.pendingPhotoPreviewUrl);
-      }
-      state.pendingPhotoBlob = blob;
-      state.pendingPhotoPreviewUrl = URL.createObjectURL(blob);
-      state.removePhotoFlag = false;
-      updatePhotoEditorUI(state.pendingPhotoPreviewUrl);
-      renderLiveCardPreview();
-      closePhotoCropper(true);
-    },
-    'image/png',
-    0.95
-  );
+  // Export compact JPEG (~25-40 KB) so every employee document stays well under Firestore's 1 MB limit
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.86);
+  if (cropState.pendingRawUrl) {
+    if (state.rawPhotoObjectUrl && state.rawPhotoObjectUrl !== cropState.pendingRawUrl) {
+      URL.revokeObjectURL(state.rawPhotoObjectUrl);
+    }
+    state.rawPhotoObjectUrl = cropState.pendingRawUrl;
+    cropState.pendingRawUrl = '';
+  }
+  state.pendingPhotoDataUrl = dataUrl;
+  state.removePhotoFlag = false;
+  updatePhotoEditorUI(dataUrl);
+  renderLiveCardPreview();
+  closePhotoCropper(true);
 }
 
-// API Calls
-async function fetchSettings() {
-  const res = await fetch('/api/settings');
-  const data = await res.json();
-  state.settings = data;
-  $('headerSchoolName').textContent = data.escola_nome || 'Escola Adventista de Ibiúna';
-  $('printTitulo').value = data.titulo_relatorio || '';
-  $('printUsuario').value = data.usuario_rodape || '';
-  if (!$('printData').value) {
-    $('printData').value = formatTodayBR();
+// =========================================================
+// Firebase Auth & Authorization Flow
+// =========================================================
+function clearListeners() {
+  for (const unsub of state.unsubs) {
+    try {
+      unsub();
+    } catch {
+      // ignore
+    }
+  }
+  state.unsubs = [];
+}
+
+function showScreen(screen) {
+  $('authScreen').hidden = screen !== 'auth';
+  $('pendingScreen').hidden = screen !== 'pending';
+  $('appShell').hidden = screen !== 'app';
+}
+
+function showAuthError(msg) {
+  const el = $('authError');
+  if (!msg) {
+    el.hidden = true;
+    el.textContent = '';
+  } else {
+    el.hidden = false;
+    el.textContent = msg;
   }
 }
 
-async function fetchEmployees() {
-  const params = new URLSearchParams();
-  if (state.filters.q) params.set('q', state.filters.q);
-  if (state.filters.tipo && state.filters.tipo !== 'Todos') params.set('tipo', state.filters.tipo);
-  if (state.filters.status) params.set('status', state.filters.status);
-  if (state.filters.assinatura) params.set('assinatura', state.filters.assinatura);
-  if (state.filters.order) params.set('order', state.filters.order);
+async function handleUserSignedIn(user) {
+  clearListeners();
+  state.user = user;
+  const emailLower = (user.email || '').toLowerCase();
+  const isAdmin = ADMIN_SET.has(emailLower);
+  state.isAdmin = isAdmin;
 
-  const res = await fetch(`/api/employees?${params.toString()}`);
-  const data = await res.json();
-  state.employees = data.employees || [];
-  state.stats = data.stats || state.stats;
+  if (!isAdmin) {
+    // Check if authorized in Firestore
+    let authorized = false;
+    try {
+      const authSnap = await getDoc(doc(db, 'authorized_users', emailLower));
+      authorized = authSnap.exists() && authSnap.data().active === true;
+    } catch {
+      authorized = false;
+    }
 
-  // Keep valid selection IDs
+    if (!authorized) {
+      await showPendingApprovalScreen(user, emailLower);
+      return;
+    }
+  }
+
+  enterMainApp(user, isAdmin);
+}
+
+async function showPendingApprovalScreen(user, emailLower) {
+  showScreen('pending');
+  $('pendingUserEmail').textContent = emailLower;
+
+  const reqRef = doc(db, 'access_requests', emailLower);
+  try {
+    const snap = await getDoc(reqRef);
+    if (!snap.exists()) {
+      await setDoc(reqRef, {
+        email: emailLower,
+        displayName: user.displayName || '',
+        photoURL: user.photoURL || '',
+        status: 'pending',
+        requestedAt: serverTimestamp(),
+      });
+    }
+  } catch (err) {
+    console.error('Erro ao registrar pedido de acesso:', err);
+  }
+
+  const unsub = onSnapshot(reqRef, async (snap) => {
+    const data = snap.data();
+    const box = $('pendingBox');
+    if (data?.status === 'approved') {
+      const authSnap = await getDoc(doc(db, 'authorized_users', emailLower));
+      if (authSnap.exists() && authSnap.data().active === true) {
+        clearListeners();
+        enterMainApp(user, false);
+      }
+    } else if (data?.status === 'rejected') {
+      $('pendingTitle').textContent = 'Acesso Recusado';
+      box.classList.add('is-rejected');
+      $('pendingMessage').textContent =
+        'O administrador recusou ou revogou o acesso para este e-mail. Fale com a escola caso precise de liberação.';
+    } else {
+      $('pendingTitle').textContent = 'Aguardando Autorização';
+      box.classList.remove('is-rejected');
+      $('pendingMessage').textContent =
+        'Sua solicitação de acesso foi enviada ao administrador do sistema. Assim que ele autorizar seu e-mail, esta tela será liberada automaticamente.';
+    }
+  });
+  state.unsubs.push(unsub);
+}
+
+async function enterMainApp(user, isAdmin) {
+  showScreen('app');
+  $('userBadge').textContent = user.email || user.displayName || 'Usuário';
+  $('adminAccessSection').hidden = !isAdmin;
+  if (!$('printData').value) {
+    $('printData').value = formatTodayBR();
+  }
+
+  // Subscribe to settings
+  const unsubSettings = onSnapshot(doc(db, 'settings', 'geral'), (snap) => {
+    if (snap.exists()) {
+      state.settings = { ...state.settings, ...snap.data() };
+    }
+    $('headerSchoolName').textContent = state.settings.escola_nome || 'Escola Adventista de Ibiúna';
+    if (!$('printTitulo').dataset.edited) {
+      $('printTitulo').value = state.settings.titulo_relatorio || 'CARÔMETRO GERAL - 2026 - ANO LETIVO';
+    }
+    if (!$('printUsuario').dataset.edited) {
+      $('printUsuario').value = state.settings.usuario_rodape || '';
+    }
+    if (state.activeTab === 'impressao') renderPrintPreview();
+  });
+  state.unsubs.push(unsubSettings);
+
+  // Subscribe to employees
+  const unsubEmp = onSnapshot(
+    collection(db, 'employees'),
+    (snapshot) => {
+      const list = [];
+      snapshot.forEach((d) => {
+        list.push({ id: d.id, ...d.data() });
+      });
+      state.allEmployees = list;
+      applyFiltersAndRender();
+    },
+    (err) => {
+      showToast('Erro ao carregar funcionários: ' + err.message, 'error');
+    }
+  );
+  state.unsubs.push(unsubEmp);
+
+  // Admin: subscribe to pending access requests & authorized users
+  if (isAdmin) {
+    const unsubReq = onSnapshot(collection(db, 'access_requests'), (snapshot) => {
+      const reqs = [];
+      snapshot.forEach((d) => reqs.push({ id: d.id, ...d.data() }));
+      state.accessRequests = reqs;
+      renderAdminNotifications();
+    });
+    const unsubAuthUsers = onSnapshot(collection(db, 'authorized_users'), (snapshot) => {
+      const users = [];
+      snapshot.forEach((d) => users.push({ id: d.id, ...d.data() }));
+      state.authorizedUsers = users;
+      renderAdminNotifications();
+    });
+    state.unsubs.push(unsubReq, unsubAuthUsers);
+  }
+}
+
+function renderAdminNotifications() {
+  if (!state.isAdmin) {
+    $('adminRequestsBanner').hidden = true;
+    return;
+  }
+
+  const pending = state.accessRequests.filter((r) => r.status === 'pending');
+  const banner = $('adminRequestsBanner');
+
+  if (pending.length === 0) {
+    banner.hidden = true;
+    banner.innerHTML = '';
+  } else {
+    banner.hidden = false;
+    banner.innerHTML = pending
+      .map(
+        (req) => `
+      <div class="admin-req-row">
+        <div>
+          <strong>Solicitação de acesso pendente:</strong>
+          ${escapeHtml(req.displayName ? `${req.displayName} (${req.email})` : req.email)}
+        </div>
+        <div class="admin-req-actions">
+          <button class="btn btn-sm btn-primary" data-approve="${escapeHtml(req.email)}">Autorizar</button>
+          <button class="btn btn-sm btn-danger-outline" data-reject="${escapeHtml(req.email)}">Recusar</button>
+        </div>
+      </div>
+    `
+      )
+      .join('');
+
+    banner.querySelectorAll('[data-approve]').forEach((btn) => {
+      btn.addEventListener('click', () => approveUserAccess(btn.dataset.approve));
+    });
+    banner.querySelectorAll('[data-reject]').forEach((btn) => {
+      btn.addEventListener('click', () => rejectUserAccess(btn.dataset.reject));
+    });
+  }
+
+  // Also update modal access manager
+  const listEl = $('accessManagerList');
+  if (!listEl) return;
+  const activeUsers = state.authorizedUsers.filter((u) => u.active === true);
+  const itemsHtml = [];
+
+  for (const req of pending) {
+    itemsHtml.push(`
+      <div class="access-item">
+        <div class="access-item-meta">
+          <strong>${escapeHtml(req.email)}</strong>
+          <small>Pendente${req.displayName ? ` — ${escapeHtml(req.displayName)}` : ''}</small>
+        </div>
+        <div class="admin-req-actions">
+          <button type="button" class="btn btn-sm btn-primary" data-approve="${escapeHtml(req.email)}">Autorizar</button>
+          <button type="button" class="btn btn-sm btn-danger-outline" data-reject="${escapeHtml(req.email)}">Recusar</button>
+        </div>
+      </div>
+    `);
+  }
+
+  for (const u of activeUsers) {
+    itemsHtml.push(`
+      <div class="access-item">
+        <div class="access-item-meta">
+          <strong>${escapeHtml(u.email)}</strong>
+          <small>Autorizado${u.displayName ? ` — ${escapeHtml(u.displayName)}` : ''}</small>
+        </div>
+        <button type="button" class="btn btn-sm btn-danger-outline" data-revoke="${escapeHtml(u.email)}">Revogar</button>
+      </div>
+    `);
+  }
+
+  listEl.innerHTML =
+    itemsHtml.length > 0
+      ? itemsHtml.join('')
+      : '<p class="muted" style="margin:0;">Nenhum usuário adicional autorizado ainda.</p>';
+
+  listEl.querySelectorAll('[data-approve]').forEach((btn) => {
+    btn.addEventListener('click', () => approveUserAccess(btn.dataset.approve));
+  });
+  listEl.querySelectorAll('[data-reject]').forEach((btn) => {
+    btn.addEventListener('click', () => rejectUserAccess(btn.dataset.reject));
+  });
+  listEl.querySelectorAll('[data-revoke]').forEach((btn) => {
+    btn.addEventListener('click', () => revokeUserAccess(btn.dataset.revoke));
+  });
+}
+
+async function approveUserAccess(email) {
+  const emailLower = String(email).toLowerCase();
+  const reqItem = state.accessRequests.find((r) => r.email === emailLower);
+  try {
+    await setDoc(doc(db, 'authorized_users', emailLower), {
+      email: emailLower,
+      displayName: reqItem?.displayName || '',
+      active: true,
+      approvedBy: state.user?.email || '',
+      approvedAt: serverTimestamp(),
+    });
+    await setDoc(
+      doc(db, 'access_requests', emailLower),
+      { status: 'approved', reviewedAt: serverTimestamp() },
+      { merge: true }
+    );
+    showToast(`Acesso autorizado para ${emailLower}!`);
+  } catch (err) {
+    showToast('Erro ao autorizar: ' + err.message, 'error');
+  }
+}
+
+async function rejectUserAccess(email) {
+  const emailLower = String(email).toLowerCase();
+  try {
+    await setDoc(
+      doc(db, 'access_requests', emailLower),
+      { status: 'rejected', reviewedAt: serverTimestamp() },
+      { merge: true }
+    );
+    showToast(`Solicitação de ${emailLower} recusada.`);
+  } catch (err) {
+    showToast('Erro ao recusar: ' + err.message, 'error');
+  }
+}
+
+async function revokeUserAccess(email) {
+  const emailLower = String(email).toLowerCase();
+  try {
+    await deleteDoc(doc(db, 'authorized_users', emailLower));
+    await setDoc(
+      doc(db, 'access_requests', emailLower),
+      { status: 'rejected', reviewedAt: serverTimestamp() },
+      { merge: true }
+    );
+    showToast(`Acesso revogado para ${emailLower}.`);
+  } catch (err) {
+    showToast('Erro ao revogar: ' + err.message, 'error');
+  }
+}
+
+// =========================================================
+// Filtering, Sorting & Rendering (Client-Side on Firestore Snapshot)
+// =========================================================
+function computeStats(list) {
+  let professores = 0;
+  let funcionarios = 0;
+  let ativos = 0;
+  let demitidos = 0;
+  for (const emp of list) {
+    if (emp.tipo === 'Professor') professores++;
+    else funcionarios++;
+    if ((emp.data_demissao || '').trim()) demitidos++;
+    else ativos++;
+  }
+  return { total: list.length, professores, funcionarios, ativos, demitidos };
+}
+
+function sortEmployeeList(list, order) {
+  const arr = [...list];
+  const byName = (a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' });
+  const codeNum = (c) => {
+    const n = parseInt(String(c || '').replace(/\D/g, ''), 10);
+    return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+  };
+
+  switch (order) {
+    case 'nome_desc':
+      arr.sort((a, b) => byName(b, a));
+      break;
+    case 'codigo_asc':
+      arr.sort((a, b) => codeNum(a.codigo) - codeNum(b.codigo) || byName(a, b));
+      break;
+    case 'codigo_desc':
+      arr.sort((a, b) => codeNum(b.codigo) - codeNum(a.codigo) || byName(a, b));
+      break;
+    case 'recentes':
+      arr.sort((a, b) => (b.updated_at_ms || 0) - (a.updated_at_ms || 0) || byName(a, b));
+      break;
+    case 'nome_asc':
+    default:
+      arr.sort(byName);
+      break;
+  }
+  return arr;
+}
+
+function applyFiltersAndRender() {
+  state.stats = computeStats(state.allEmployees);
+  const { q, tipo, status, assinatura, order } = state.filters;
+  const term = (q || '').trim().toLowerCase();
+  const termDigits = term.replace(/\D/g, '');
+
+  const filtered = state.allEmployees.filter((emp) => {
+    if (tipo && tipo !== 'Todos' && emp.tipo !== tipo) return false;
+    const isDem = Boolean((emp.data_demissao || '').trim());
+    if (status === 'Ativos' && isDem) return false;
+    if (status === 'Demitidos' && !isDem) return false;
+    if (assinatura === 'sim' && !emp.tem_assinatura_digitalizada) return false;
+    if (assinatura === 'nao' && emp.tem_assinatura_digitalizada) return false;
+
+    if (term) {
+      const hay = [
+        emp.nome,
+        emp.codigo,
+        emp.cpf,
+        emp.rg,
+        emp.email,
+        emp.endereco,
+        emp.telefones,
+        emp.cargo,
+      ]
+        .join(' ')
+        .toLowerCase();
+      const cpfDigits = (emp.cpf || '').replace(/\D/g, '');
+      const matchesText = hay.includes(term);
+      const matchesDigits = termDigits.length >= 3 && cpfDigits.includes(termDigits);
+      if (!matchesText && !matchesDigits) return false;
+    }
+    return true;
+  });
+
+  state.employees = sortEmployeeList(filtered, order);
+
   const validIds = new Set(state.employees.map((e) => e.id));
   for (const id of [...state.selectedIds]) {
     if (!validIds.has(id)) state.selectedIds.delete(id);
   }
-
   if (state.currentIndex >= state.employees.length) {
     state.currentIndex = Math.max(0, state.employees.length - 1);
   }
@@ -263,8 +643,8 @@ function renderTable() {
     .map((emp, idx) => {
       const isDemitido = Boolean((emp.data_demissao || '').trim());
       const checked = state.selectedIds.has(emp.id) ? 'checked' : '';
-      const photoHtml = emp.foto_path
-        ? `<img class="thumb-photo" src="/uploads/${encodeURIComponent(emp.foto_path)}" alt="" loading="lazy" />`
+      const photoHtml = emp.foto_data
+        ? `<img class="thumb-photo" src="${emp.foto_data}" alt="" loading="lazy" />`
         : `<div class="thumb-empty">Sem foto</div>`;
       const tipoBadge =
         emp.tipo === 'Professor'
@@ -272,13 +652,13 @@ function renderTable() {
           : '<span class="badge badge-func">Funcionário</span>';
       const demBadge = isDemitido ? '<span class="badge badge-dem">Demitido</span>' : '';
       const assinHtml = emp.tem_assinatura_digitalizada
-        ? '<img class="check-mini" src="/assets/checkmark.png" alt="Sim" title="Tem assinatura digitalizada" />'
+        ? '<img class="check-mini" src="./assets/checkmark.png" alt="Sim" title="Tem assinatura digitalizada" />'
         : '<span class="row-sub">Não</span>';
 
       return `
-        <tr data-index="${idx}" data-id="${emp.id}" class="${isDemitido ? 'is-demitido' : ''}">
+        <tr data-index="${idx}" data-id="${escapeHtml(emp.id)}" class="${isDemitido ? 'is-demitido' : ''}">
           <td class="col-check" onclick="event.stopPropagation()">
-            <input type="checkbox" class="row-checkbox" data-id="${emp.id}" ${checked} />
+            <input type="checkbox" class="row-checkbox" data-id="${escapeHtml(emp.id)}" ${checked} />
           </td>
           <td class="col-photo">${photoHtml}</td>
           <td><strong>${escapeHtml(emp.codigo || '-')}</strong></td>
@@ -296,7 +676,7 @@ function renderTable() {
           <td>${assinHtml}</td>
           <td class="col-actions" onclick="event.stopPropagation()">
             <button class="btn btn-sm btn-secondary" data-action="edit" data-index="${idx}">Editar</button>
-            <button class="btn btn-sm btn-danger-outline" data-action="delete" data-id="${emp.id}">Excluir</button>
+            <button class="btn btn-sm btn-danger-outline" data-action="delete" data-id="${escapeHtml(emp.id)}">Excluir</button>
           </td>
         </tr>
       `;
@@ -305,14 +685,13 @@ function renderTable() {
 
   tbody.querySelectorAll('tr').forEach((tr) => {
     tr.addEventListener('click', () => {
-      const idx = parseInt(tr.dataset.index, 10);
-      openRecordInFicha(idx);
+      openRecordInFicha(parseInt(tr.dataset.index, 10));
     });
   });
 
   tbody.querySelectorAll('.row-checkbox').forEach((cb) => {
     cb.addEventListener('change', () => {
-      const id = parseInt(cb.dataset.id, 10);
+      const id = cb.dataset.id;
       if (cb.checked) state.selectedIds.add(id);
       else state.selectedIds.delete(id);
       renderTable();
@@ -327,12 +706,14 @@ function renderTable() {
 
   tbody.querySelectorAll('button[data-action="delete"]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      askDeleteEmployee(parseInt(btn.dataset.id, 10));
+      askDeleteEmployee(btn.dataset.id);
     });
   });
 }
 
-// Tabs
+// =========================================================
+// Tabs & Ficha / Navigator
+// =========================================================
 function switchTab(tabName) {
   state.activeTab = tabName;
   document.querySelectorAll('.tab').forEach((t) => {
@@ -343,29 +724,24 @@ function switchTab(tabName) {
   });
 
   if (tabName === 'ficha') {
-    if (!state.isNewMode) {
-      loadCurrentRecordIntoForm();
-    }
+    if (!state.isNewMode) loadCurrentRecordIntoForm();
   } else if (tabName === 'impressao') {
     renderPrintPreview();
   }
 }
 
-// Ficha / Form & Navigation
+function clearPendingPhotoState() {
+  state.pendingPhotoDataUrl = '';
+  if (state.rawPhotoObjectUrl) URL.revokeObjectURL(state.rawPhotoObjectUrl);
+  state.rawPhotoObjectUrl = '';
+  state.removePhotoFlag = false;
+}
+
 function openRecordInFicha(index) {
   state.isNewMode = false;
   state.currentIndex = Math.max(0, Math.min(index, state.employees.length - 1));
   switchTab('ficha');
   loadCurrentRecordIntoForm();
-}
-
-function clearPendingPhotoState() {
-  state.pendingPhotoBlob = null;
-  if (state.pendingPhotoPreviewUrl) URL.revokeObjectURL(state.pendingPhotoPreviewUrl);
-  state.pendingPhotoPreviewUrl = '';
-  if (state.rawPhotoObjectUrl) URL.revokeObjectURL(state.rawPhotoObjectUrl);
-  state.rawPhotoObjectUrl = '';
-  state.removePhotoFlag = false;
 }
 
 function startNewEmployeeForm() {
@@ -429,10 +805,9 @@ function loadCurrentRecordIntoForm() {
   $('fAssinatura').checked = Boolean(emp.tem_assinatura_digitalizada);
   $('fTelefones').value = emp.telefones || '';
 
-  const photoUrl = emp.foto_path ? `/uploads/${encodeURIComponent(emp.foto_path)}` : '';
-  updatePhotoEditorUI(photoUrl);
+  updatePhotoEditorUI(emp.foto_data || '');
   updateNavButtons();
-  $('fichaModePill').textContent = `Editando #${emp.codigo || emp.id}`;
+  $('fichaModePill').textContent = `Editando #${emp.codigo || emp.id.slice(0, 6)}`;
   $('btnFichaDelete').disabled = false;
   $('btnFichaPrintOne').disabled = false;
   $('btnFichaPdfOne').disabled = false;
@@ -476,15 +851,15 @@ function updatePhotoEditorUI(url) {
 
 function getFormEmployeeSnapshot() {
   const existing = !state.isNewMode ? state.employees[state.currentIndex] : null;
-  let previewPhotoSrc = '';
-  if (state.pendingPhotoPreviewUrl) {
-    previewPhotoSrc = state.pendingPhotoPreviewUrl;
-  } else if (!state.removePhotoFlag && existing?.foto_path) {
-    previewPhotoSrc = `/uploads/${encodeURIComponent(existing.foto_path)}`;
+  let photoData = '';
+  if (state.pendingPhotoDataUrl) {
+    photoData = state.pendingPhotoDataUrl;
+  } else if (!state.removePhotoFlag && existing?.foto_data) {
+    photoData = existing.foto_data;
   }
 
   return {
-    id: $('empId').value ? parseInt($('empId').value, 10) : null,
+    id: $('empId').value || null,
     codigo: $('fCodigo').value.trim(),
     nome: $('fNome').value.trim(),
     cpf: $('fCpf').value.trim(),
@@ -501,25 +876,18 @@ function getFormEmployeeSnapshot() {
     data_demissao: $('fDataDemissao').value.trim(),
     tem_assinatura_digitalizada: $('fAssinatura').checked ? 1 : 0,
     telefones: $('fTelefones').value.trim(),
-    previewPhotoSrc,
+    foto_data: photoData,
   };
 }
 
-// Renders ONE card identically to carometro.pdf
 function buildCardHtml(emp, standalone = false) {
-  const photoSrc =
-    emp.previewPhotoSrc !== undefined
-      ? emp.previewPhotoSrc
-      : emp.foto_path
-        ? `/uploads/${encodeURIComponent(emp.foto_path)}`
-        : '';
-
+  const photoSrc = emp.foto_data || '';
   const photoHtml = photoSrc
     ? `<img src="${photoSrc}" alt="" />`
     : `<div class="cm-photo-empty">Sem foto</div>`;
 
   const checkHtml = emp.tem_assinatura_digitalizada
-    ? `<img src="/assets/checkmark.png" class="cm-check-icon" alt="Sim" />`
+    ? `<img src="./assets/checkmark.png" class="cm-check-icon" alt="Sim" />`
     : '';
 
   return `
@@ -572,14 +940,16 @@ function openCurrentPhotoInCropper() {
   const existing = !state.isNewMode ? state.employees[state.currentIndex] : null;
   if (state.rawPhotoObjectUrl) {
     openPhotoCropperFromUrl(state.rawPhotoObjectUrl, false);
-  } else if (state.pendingPhotoPreviewUrl) {
-    openPhotoCropperFromUrl(state.pendingPhotoPreviewUrl, false);
-  } else if (!state.removePhotoFlag && existing?.foto_path) {
-    openPhotoCropperFromUrl(`/uploads/${encodeURIComponent(existing.foto_path)}`, false);
+  } else if (state.pendingPhotoDataUrl) {
+    openPhotoCropperFromUrl(state.pendingPhotoDataUrl, false);
+  } else if (!state.removePhotoFlag && existing?.foto_data) {
+    openPhotoCropperFromUrl(existing.foto_data, false);
   }
 }
 
-// Save Employee (Add or Update)
+// =========================================================
+// Firestore CRUD (Add / Edit / Delete)
+// =========================================================
 async function handleSaveEmployee(e) {
   e.preventDefault();
   const snap = getFormEmployeeSnapshot();
@@ -589,59 +959,61 @@ async function handleSaveEmployee(e) {
     return;
   }
 
-  const fd = new FormData();
-  fd.append('codigo', snap.codigo);
-  fd.append('nome', snap.nome);
-  fd.append('cpf', snap.cpf);
-  fd.append('tipo', snap.tipo);
-  fd.append('cargo', snap.cargo);
-  fd.append('email', snap.email);
-  fd.append('endereco', snap.endereco);
-  fd.append('data_nascimento', snap.data_nascimento);
-  fd.append('sexo', snap.sexo);
-  fd.append('rg', snap.rg);
-  fd.append('emitido_por', snap.emitido_por);
-  fd.append('data_emissao', snap.data_emissao);
-  fd.append('data_contratacao', snap.data_contratacao);
-  fd.append('data_demissao', snap.data_demissao);
-  fd.append('tem_assinatura_digitalizada', snap.tem_assinatura_digitalizada ? '1' : '0');
-  fd.append('telefones', snap.telefones);
-
-  if (state.pendingPhotoBlob) {
-    fd.append('foto', state.pendingPhotoBlob, 'foto.png');
-  } else if (state.removePhotoFlag) {
-    fd.append('remove_photo', 'true');
-  }
+  const record = {
+    codigo: snap.codigo,
+    nome: snap.nome,
+    cpf: snap.cpf,
+    tipo: snap.tipo,
+    cargo: snap.cargo,
+    email: snap.email,
+    endereco: snap.endereco,
+    data_nascimento: snap.data_nascimento,
+    sexo: snap.sexo,
+    rg: snap.rg,
+    emitido_por: snap.emitido_por,
+    data_emissao: snap.data_emissao,
+    data_contratacao: snap.data_contratacao,
+    data_demissao: snap.data_demissao,
+    tem_assinatura_digitalizada: snap.tem_assinatura_digitalizada ? 1 : 0,
+    telefones: snap.telefones,
+    foto_data: snap.foto_data || '',
+    updated_at_ms: Date.now(),
+  };
 
   const isNew = state.isNewMode || !snap.id;
-  const url = isNew ? '/api/employees' : `/api/employees/${snap.id}`;
-  const method = isNew ? 'POST' : 'PUT';
-
   const btn = $('btnSaveEmployee');
   btn.disabled = true;
+
   try {
-    const res = await fetch(url, { method, body: fd });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao salvar cadastro.');
-
-    showToast(isNew ? 'Funcionário cadastrado com sucesso!' : 'Cadastro atualizado com sucesso!');
-    state.isNewMode = false;
-    await fetchEmployees();
-
-    const savedId = data.employee?.id;
-    const foundIdx = state.employees.findIndex((item) => item.id === savedId);
-    if (foundIdx >= 0) {
-      state.currentIndex = foundIdx;
+    let savedId = snap.id;
+    if (isNew) {
+      record.created_at_ms = Date.now();
+      const docRef = await addDoc(collection(db, 'employees'), record);
+      savedId = docRef.id;
+      showToast('Funcionário cadastrado no Firebase!');
+    } else {
+      await updateDoc(doc(db, 'employees', snap.id), record);
+      showToast('Cadastro atualizado!');
     }
-    loadCurrentRecordIntoForm();
+
+    state.isNewMode = false;
+    clearPendingPhotoState();
+
+    // Update currentIndex after snapshot refreshes
+    setTimeout(() => {
+      const idx = state.employees.findIndex((item) => item.id === savedId);
+      if (idx >= 0) {
+        state.currentIndex = idx;
+        loadCurrentRecordIntoForm();
+      }
+    }, 180);
   } catch (err) {
-    showToast(err.message, 'error');
+    showToast('Erro ao salvar: ' + err.message, 'error');
   } finally {
     btn.disabled = false;
   }
 }
 
-// Delete Employee
 function askDeleteEmployee(id) {
   const emp = state.employees.find((e) => e.id === id);
   if (!emp) return;
@@ -654,48 +1026,20 @@ async function confirmDeleteEmployee() {
   const id = state.pendingDeleteId;
   if (!id) return;
   try {
-    const res = await fetch(`/api/employees/${id}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao excluir.');
-
+    await deleteDoc(doc(db, 'employees', id));
     $('confirmModal').hidden = true;
     state.pendingDeleteId = null;
     state.selectedIds.delete(id);
     showToast('Registro excluído com sucesso.');
-    await fetchEmployees();
-    if (state.activeTab === 'ficha') {
-      loadCurrentRecordIntoForm();
-    }
   } catch (err) {
-    showToast(err.message, 'error');
+    showToast('Erro ao excluir: ' + err.message, 'error');
   }
 }
 
-// Print & PDF Helpers
-function getScopeQueryParams(overrideScope = null, specificIds = null) {
-  const params = new URLSearchParams();
-  const scope = overrideScope || $('printScope').value || 'filtered';
-
-  if (specificIds && specificIds.length > 0) {
-    params.set('ids', specificIds.join(','));
-  } else if (scope === 'selected' && state.selectedIds.size > 0) {
-    params.set('ids', [...state.selectedIds].join(','));
-  } else if (scope === 'filtered') {
-    if (state.filters.q) params.set('q', state.filters.q);
-    if (state.filters.tipo && state.filters.tipo !== 'Todos') params.set('tipo', state.filters.tipo);
-    if (state.filters.status) params.set('status', state.filters.status);
-    if (state.filters.assinatura) params.set('assinatura', state.filters.assinatura);
-  }
-  if (state.filters.order) params.set('order', state.filters.order);
-
-  params.set('escola_nome', state.settings.escola_nome || 'Escola Adventista de Ibiúna');
-  params.set('titulo_relatorio', $('printTitulo').value || state.settings.titulo_relatorio);
-  params.set('usuario_rodape', $('printUsuario').value || state.settings.usuario_rodape);
-  params.set('data_impressao', $('printData').value || formatTodayBR());
-  return params;
-}
-
-async function getEmployeesForPrint(overrideScope = null, specificIds = null) {
+// =========================================================
+// Print A4 & Client-Side PDF Generation
+// =========================================================
+function getEmployeesForPrint(overrideScope = null, specificIds = null) {
   const scope = overrideScope || $('printScope').value || 'filtered';
   if (specificIds && specificIds.length > 0) {
     return state.employees.filter((e) => specificIds.includes(e.id));
@@ -708,9 +1052,7 @@ async function getEmployeesForPrint(overrideScope = null, specificIds = null) {
     return state.employees.filter((e) => state.selectedIds.has(e.id));
   }
   if (scope === 'all') {
-    const res = await fetch(`/api/employees?order=${encodeURIComponent(state.filters.order)}`);
-    const data = await res.json();
-    return data.employees || [];
+    return sortEmployeeList(state.allEmployees, state.filters.order);
   }
   return state.employees;
 }
@@ -729,7 +1071,6 @@ function buildA4PagesHtml(employees) {
   const usuario = $('printUsuario').value || state.settings.usuario_rodape;
   const dataStr = $('printData').value || formatTodayBR();
 
-  // Paginate up to 7 cards per page without ever colliding with the footer (y <= 795pt)
   const pages = [];
   let current = [];
   let y = 78.3;
@@ -754,7 +1095,7 @@ function buildA4PagesHtml(employees) {
       return `
         <div class="a4-page">
           <div class="cm-header">
-            <img src="/assets/logo.png" alt="Educação Adventista" class="cm-logo" />
+            <img src="./assets/logo.png" alt="Educação Adventista" class="cm-logo" />
             <div class="cm-school">${escapeHtml(escola)}</div>
             <div class="cm-title">${escapeHtml(titulo)}</div>
           </div>
@@ -770,52 +1111,55 @@ function buildA4PagesHtml(employees) {
     .join('');
 }
 
-async function renderPrintPreview() {
-  const list = await getEmployeesForPrint();
+function renderPrintPreview() {
+  const list = getEmployeesForPrint();
   const html = buildA4PagesHtml(list);
   $('printPreviewContainer').innerHTML = html;
   $('printOnlyRoot').innerHTML = html;
 }
 
-async function triggerBrowserPrint(overrideScope = null, specificIds = null) {
-  const list = await getEmployeesForPrint(overrideScope, specificIds);
+function triggerBrowserPrint(overrideScope = null, specificIds = null) {
+  const list = getEmployeesForPrint(overrideScope, specificIds);
   $('printOnlyRoot').innerHTML = buildA4PagesHtml(list);
   window.print();
 }
 
-function downloadPdf(overrideScope = null, specificIds = null, inline = false) {
-  const params = getScopeQueryParams(overrideScope, specificIds);
-  if (inline) params.set('inline', '1');
-  const url = `/api/pdf?${params.toString()}`;
-  if (inline) {
-    window.open(url, '_blank');
-  } else {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `carometro_${new Date().toISOString().slice(0, 10)}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+async function downloadPdf(overrideScope = null, specificIds = null, inline = false) {
+  try {
+    const list = getEmployeesForPrint(overrideScope, specificIds);
+    showToast('Gerando PDF...');
+    const blob = await generateCarometroPdfBlob(list, {
+      escola_nome: state.settings.escola_nome || 'Escola Adventista de Ibiúna',
+      titulo_relatorio: $('printTitulo').value || state.settings.titulo_relatorio,
+      usuario_rodape: $('printUsuario').value || state.settings.usuario_rodape,
+      data_impressao: $('printData').value || formatTodayBR(),
+    });
+    const url = URL.createObjectURL(blob);
+    if (inline) {
+      window.open(url, '_blank');
+    } else {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `carometro_${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+  } catch (err) {
+    showToast('Erro ao gerar PDF: ' + err.message, 'error');
   }
 }
 
-// Settings & Backup Modal
-async function openSettingsModal() {
+// =========================================================
+// Settings, Backup & Import
+// =========================================================
+function openSettingsModal() {
   $('sEscola').value = state.settings.escola_nome || '';
   $('sTitulo').value = state.settings.titulo_relatorio || '';
   $('sUsuario').value = state.settings.usuario_rodape || '';
+  renderAdminNotifications();
   $('settingsModal').hidden = false;
-
-  try {
-    const res = await fetch('/api/info');
-    const info = await res.json();
-    $('systemInfoBox').innerHTML = `
-      <div><strong>Arquivo do banco:</strong> ${escapeHtml(info.db_path)}</div>
-      <div><strong>Endereços na rede local:</strong> ${info.urls.map((u) => escapeHtml(u)).join(' | ')}</div>
-    `;
-  } catch {
-    $('systemInfoBox').textContent = '';
-  }
 }
 
 async function saveSettings(e) {
@@ -825,19 +1169,32 @@ async function saveSettings(e) {
     titulo_relatorio: $('sTitulo').value.trim() || 'CARÔMETRO GERAL - 2026 - ANO LETIVO',
     usuario_rodape: $('sUsuario').value.trim(),
   };
-  const res = await fetch('/api/settings', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (res.ok) {
-    await fetchSettings();
+  try {
+    await setDoc(doc(db, 'settings', 'geral'), payload, { merge: true });
+    delete $('printTitulo').dataset.edited;
+    delete $('printUsuario').dataset.edited;
     $('settingsModal').hidden = true;
     showToast('Configurações salvas!');
-    if (state.activeTab === 'impressao') renderPrintPreview();
-  } else {
-    showToast('Erro ao salvar configurações.', 'error');
+  } catch (err) {
+    showToast('Erro ao salvar configurações: ' + err.message, 'error');
   }
+}
+
+function downloadJsonBackup() {
+  const payload = {
+    exported_at: new Date().toISOString(),
+    settings: state.settings,
+    employees: sortEmployeeList(state.allEmployees, 'nome_asc').map(({ id: _id, ...rest }) => rest),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `carometro_backup_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 async function handleRestoreBackup(file) {
@@ -845,24 +1202,110 @@ async function handleRestoreBackup(file) {
   try {
     const text = await file.text();
     const json = JSON.parse(text);
-    const res = await fetch('/api/restore', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(json),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Falha ao restaurar backup.');
-    await fetchSettings();
-    await fetchEmployees();
+    if (!json || !Array.isArray(json.employees)) {
+      throw new Error('Arquivo JSON inválido.');
+    }
+
+    // Build lookup of existing records by (codigo + nome) to avoid duplicates on import
+    const existingMap = new Map();
+    for (const emp of state.allEmployees) {
+      const key = `${(emp.codigo || '').trim()}|${(emp.nome || '').trim().toLowerCase()}`;
+      existingMap.set(key, emp.id);
+    }
+
+    let imported = 0;
+    const batchSize = 150;
+    for (let i = 0; i < json.employees.length; i += batchSize) {
+      const chunk = json.employees.slice(i, i + batchSize);
+      const batch = writeBatch(db);
+      for (const raw of chunk) {
+        const record = {
+          codigo: String(raw.codigo ?? '').trim(),
+          nome: String(raw.nome ?? '').trim(),
+          cpf: String(raw.cpf ?? '').trim(),
+          endereco: String(raw.endereco ?? '').trim(),
+          data_nascimento: String(raw.data_nascimento ?? '').trim(),
+          sexo: String(raw.sexo ?? '').trim(),
+          email: String(raw.email ?? '').trim(),
+          rg: String(raw.rg ?? '').trim(),
+          emitido_por: String(raw.emitido_por ?? '').trim(),
+          data_emissao: String(raw.data_emissao ?? '').trim(),
+          data_contratacao: String(raw.data_contratacao ?? '').trim(),
+          data_demissao: String(raw.data_demissao ?? '').trim(),
+          tem_assinatura_digitalizada: raw.tem_assinatura_digitalizada ? 1 : 0,
+          telefones: String(raw.telefones ?? '').trim(),
+          tipo: String(raw.tipo || 'Funcionário').trim(),
+          cargo: String(raw.cargo ?? '').trim(),
+          foto_data: String(raw.foto_data ?? '').trim(),
+          updated_at_ms: Date.now(),
+        };
+        if (!record.nome) continue;
+
+        const key = `${record.codigo}|${record.nome.toLowerCase()}`;
+        const existingId = existingMap.get(key);
+        if (existingId) {
+          batch.set(doc(db, 'employees', existingId), record, { merge: true });
+        } else {
+          record.created_at_ms = Date.now();
+          batch.set(doc(collection(db, 'employees')), record);
+        }
+        imported++;
+      }
+      await batch.commit();
+    }
+
+    if (json.settings && typeof json.settings === 'object') {
+      await setDoc(
+        doc(db, 'settings', 'geral'),
+        {
+          escola_nome: json.settings.escola_nome || state.settings.escola_nome,
+          titulo_relatorio: json.settings.titulo_relatorio || state.settings.titulo_relatorio,
+          usuario_rodape: json.settings.usuario_rodape || state.settings.usuario_rodape,
+        },
+        { merge: true }
+      );
+    }
+
+    $('restoreFileInput').value = '';
     $('settingsModal').hidden = true;
-    showToast(`Backup restaurado com ${data.count} registro(s)!`);
+    showToast(`Importação concluída: ${imported} registro(s) sincronizado(s)!`);
   } catch (err) {
-    showToast('Erro no backup: ' + err.message, 'error');
+    showToast('Erro ao importar: ' + err.message, 'error');
   }
 }
 
+// =========================================================
 // Event Listeners
+// =========================================================
 function bindEvents() {
+  // Auth
+  $('btnGoogleLogin').addEventListener('click', async () => {
+    showAuthError('');
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      showAuthError('Não foi possível entrar com o Google: ' + (err.message || err.code));
+    }
+  });
+
+  $('emailLoginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    showAuthError('');
+    const email = $('loginEmail').value.trim();
+    const pass = $('loginPassword').value;
+    try {
+      await signInWithEmailAndPassword(auth, email, pass);
+    } catch {
+      showAuthError('E-mail ou senha inválidos.');
+    }
+  });
+
+  $('btnLogout').addEventListener('click', () => signOut(auth));
+  $('btnPendingLogout').addEventListener('click', () => signOut(auth));
+  $('btnRetryAuthCheck').addEventListener('click', () => {
+    if (auth.currentUser) handleUserSignedIn(auth.currentUser);
+  });
+
   // Tabs
   document.querySelectorAll('.tab').forEach((btn) => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -870,9 +1313,7 @@ function bindEvents() {
 
   // Topbar buttons
   $('btnNewEmployee').addEventListener('click', startNewEmployeeForm);
-  $('btnPrintPreview').addEventListener('click', () => {
-    switchTab('impressao');
-  });
+  $('btnPrintPreview').addEventListener('click', () => switchTab('impressao'));
   $('btnDownloadPdf').addEventListener('click', () => {
     const scope = state.selectedIds.size > 0 ? 'selected' : 'filtered';
     downloadPdf(scope);
@@ -885,8 +1326,8 @@ function bindEvents() {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
       state.filters.q = e.target.value;
-      fetchEmployees();
-    }, 180);
+      applyFiltersAndRender();
+    }, 120);
   });
 
   $('tipoFilter').querySelectorAll('.seg-btn').forEach((btn) => {
@@ -894,23 +1335,23 @@ function bindEvents() {
       $('tipoFilter').querySelectorAll('.seg-btn').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       state.filters.tipo = btn.dataset.value;
-      fetchEmployees();
+      applyFiltersAndRender();
     });
   });
 
   $('statusFilter').addEventListener('change', (e) => {
     state.filters.status = e.target.value;
-    fetchEmployees();
+    applyFiltersAndRender();
   });
 
   $('assinaturaFilter').addEventListener('change', (e) => {
     state.filters.assinatura = e.target.value;
-    fetchEmployees();
+    applyFiltersAndRender();
   });
 
   $('orderSelect').addEventListener('change', (e) => {
     state.filters.order = e.target.value;
-    fetchEmployees();
+    applyFiltersAndRender();
   });
 
   $('btnResetFilters').addEventListener('click', () => {
@@ -922,7 +1363,7 @@ function bindEvents() {
     $('tipoFilter').querySelectorAll('.seg-btn').forEach((b) => {
       b.classList.toggle('active', b.dataset.value === 'Todos');
     });
-    fetchEmployees();
+    applyFiltersAndRender();
   });
 
   // Selection
@@ -983,7 +1424,7 @@ function bindEvents() {
   });
   $('btnCancelForm').addEventListener('click', () => switchTab('consulta'));
 
-  // Form inputs & masks & live preview
+  // Form inputs & masks
   $('fCpf').addEventListener('input', (e) => {
     e.target.value = maskCpf(e.target.value);
     renderLiveCardPreview();
@@ -1091,11 +1532,20 @@ function bindEvents() {
   $('printTituloPreset').addEventListener('change', (e) => {
     if (e.target.value) {
       $('printTitulo').value = e.target.value;
+      $('printTitulo').dataset.edited = '1';
       e.target.value = '';
       renderPrintPreview();
     }
   });
-  ['printTitulo', 'printUsuario', 'printData', 'printScope'].forEach((id) => {
+  $('printTitulo').addEventListener('input', () => {
+    $('printTitulo').dataset.edited = '1';
+    renderPrintPreview();
+  });
+  $('printUsuario').addEventListener('input', () => {
+    $('printUsuario').dataset.edited = '1';
+    renderPrintPreview();
+  });
+  ['printData', 'printScope'].forEach((id) => {
     $(id).addEventListener('input', renderPrintPreview);
     $(id).addEventListener('change', renderPrintPreview);
   });
@@ -1106,6 +1556,7 @@ function bindEvents() {
   // Modals
   $('btnCloseSettings').addEventListener('click', () => ($('settingsModal').hidden = true));
   $('settingsForm').addEventListener('submit', saveSettings);
+  $('btnDownloadJsonBackup').addEventListener('click', downloadJsonBackup);
   $('restoreFileInput').addEventListener('change', (e) => handleRestoreBackup(e.target.files[0]));
   $('btnCloseConfirm').addEventListener('click', () => ($('confirmModal').hidden = true));
   $('btnCancelDelete').addEventListener('click', () => ($('confirmModal').hidden = true));
@@ -1113,8 +1564,14 @@ function bindEvents() {
 }
 
 // Init
-(async function init() {
-  bindEvents();
-  await fetchSettings();
-  await fetchEmployees();
-})();
+bindEvents();
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    clearListeners();
+    state.user = null;
+    state.isAdmin = false;
+    showScreen('auth');
+  } else {
+    handleUserSignedIn(user);
+  }
+});

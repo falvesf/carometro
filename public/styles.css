@@ -33,6 +33,192 @@ body {
   flex-direction: column;
 }
 
+.app-shell[hidden],
+.auth-screen[hidden],
+.admin-banner[hidden] {
+  display: none;
+}
+
+/* Auth & Pending Screens */
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #eef3fa 0%, #f8fafc 100%);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 32px 28px;
+  text-align: center;
+}
+
+.auth-logo {
+  height: 52px;
+  width: auto;
+  margin-bottom: 14px;
+}
+
+.auth-card h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  color: var(--brand);
+}
+
+.auth-sub {
+  margin: 0 0 22px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.btn-google {
+  width: 100%;
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #cbd5e1;
+  padding: 10px 16px;
+  font-size: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.btn-google:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.auth-error {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.pending-box {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 13px;
+  margin-bottom: 18px;
+  text-align: left;
+}
+
+.pending-box.is-rejected {
+  background: var(--danger-soft);
+  border-color: #fecaca;
+  color: var(--danger);
+}
+
+.pending-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.user-pill {
+  font-size: 12px;
+  color: var(--muted);
+  background: #f1f5f9;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Admin Pending Request Banner */
+.admin-banner {
+  background: #fffbeb;
+  border-bottom: 1px solid #fcd34d;
+  padding: 10px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-req-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #78350f;
+}
+
+.admin-req-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* Access Control List inside Settings */
+.access-section h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.access-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.access-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 12.5px;
+  flex-wrap: wrap;
+}
+
+.access-item-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.access-item-meta small {
+  color: var(--muted);
+}
+
 /* Topbar */
 .topbar {
   background: var(--surface);
