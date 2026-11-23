@@ -471,13 +471,23 @@ body {
   padding: 0 4px;
 }
 
+/* Sticky Consulta Filter & Selection Bar */
+.consulta-sticky {
+  position: sticky;
+  top: var(--chrome-h, 114px);
+  z-index: 45;
+  background: var(--bg);
+  padding-top: 8px;
+  margin-top: -8px;
+}
+
 /* Filter bar */
 .filter-bar {
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .search-box input {
@@ -937,45 +947,38 @@ body {
   padding: 12px 16px;
   margin-bottom: 18px;
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 10px;
   position: sticky;
   top: calc(var(--chrome-h, 114px) + 8px);
   z-index: 45;
 }
 
 .print-toolbar-fields {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(300px, 2.2fr) minmax(190px, 1.3fr) 125px 175px;
   gap: 12px;
-  flex-wrap: wrap;
-  flex: 1;
+  align-items: end;
+  width: 100%;
 }
 
 .print-toolbar-fields .field {
-  min-width: 240px;
-  flex: 1.4;
-}
-
-.print-toolbar-fields .field-sm {
-  min-width: 140px;
-  max-width: 175px;
-  flex: 0.7;
+  min-width: 0;
 }
 
 .input-with-presets {
   display: flex;
   gap: 6px;
+  min-width: 0;
 }
 
 .input-with-presets input {
-  min-width: 175px;
+  min-width: 0;
   flex: 1;
 }
 
 .input-with-presets select {
-  width: 145px;
+  width: 155px;
   flex-shrink: 0;
 }
 
@@ -983,6 +986,19 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 960px) {
+  .print-toolbar-fields {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .print-toolbar-fields {
+    grid-template-columns: 1fr;
+  }
 }
 
 .print-preview-stage {

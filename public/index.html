@@ -118,58 +118,60 @@
     <!-- TAB 1: CONSULTA & LISTA -->
     <main class="main-content">
       <section id="tab-consulta" class="tab-panel active">
-        <div class="filter-bar card">
-          <div class="search-box">
-            <input
-              type="search"
-              id="searchInput"
-              placeholder="Consultar por nome, código/matrícula, CPF, RG, e-mail, endereço, telefone ou cargo..."
-              autocomplete="off"
-            />
-          </div>
-          <div class="filter-controls">
-            <div class="segmented" id="tipoFilter">
-              <button class="seg-btn active" data-value="Todos">Todos</button>
-              <button class="seg-btn" data-value="Professor">Professores</button>
-              <button class="seg-btn" data-value="Funcionário">Funcionários</button>
+        <div class="consulta-sticky">
+          <div class="filter-bar card">
+            <div class="search-box">
+              <input
+                type="search"
+                id="searchInput"
+                placeholder="Consultar por nome, código/matrícula, CPF, RG, e-mail, endereço, telefone ou cargo..."
+                autocomplete="off"
+              />
             </div>
+            <div class="filter-controls">
+              <div class="segmented" id="tipoFilter">
+                <button class="seg-btn active" data-value="Todos">Todos</button>
+                <button class="seg-btn" data-value="Professor">Professores</button>
+                <button class="seg-btn" data-value="Funcionário">Funcionários</button>
+              </div>
 
-            <select id="statusFilter" aria-label="Filtrar por status">
-              <option value="">Status: Todos</option>
-              <option value="Ativos" selected>Somente Ativos</option>
-              <option value="Demitidos">Somente Demitidos</option>
-            </select>
+              <select id="statusFilter" aria-label="Filtrar por status">
+                <option value="">Status: Todos</option>
+                <option value="Ativos" selected>Somente Ativos</option>
+                <option value="Demitidos">Somente Demitidos</option>
+              </select>
 
-            <select id="assinaturaFilter" aria-label="Filtrar por assinatura">
-              <option value="">Assinatura: Todas</option>
-              <option value="sim">Com assinatura digitalizada</option>
-              <option value="nao">Sem assinatura digitalizada</option>
-            </select>
+              <select id="assinaturaFilter" aria-label="Filtrar por assinatura">
+                <option value="">Assinatura: Todas</option>
+                <option value="sim">Com assinatura digitalizada</option>
+                <option value="nao">Sem assinatura digitalizada</option>
+              </select>
 
-            <select id="orderSelect" aria-label="Ordenar por">
-              <option value="nome_asc">Ordenar: Nome (A–Z)</option>
-              <option value="nome_desc">Ordenar: Nome (Z–A)</option>
-              <option value="codigo_asc">Ordenar: Código (Menor–Maior)</option>
-              <option value="codigo_desc">Ordenar: Código (Maior–Menor)</option>
-              <option value="recentes">Ordenar: Cadastrados recentemente</option>
-            </select>
+              <select id="orderSelect" aria-label="Ordenar por">
+                <option value="nome_asc">Ordenar: Nome (A–Z)</option>
+                <option value="nome_desc">Ordenar: Nome (Z–A)</option>
+                <option value="codigo_asc">Ordenar: Código (Menor–Maior)</option>
+                <option value="codigo_desc">Ordenar: Código (Maior–Menor)</option>
+                <option value="recentes">Ordenar: Cadastrados recentemente</option>
+              </select>
+            </div>
           </div>
-        </div>
 
-        <div class="selection-bar" id="selectionBar">
-          <div class="selection-info">
-            <label class="checkbox-inline">
-              <input type="checkbox" id="selectAllCheckbox" />
-              <span>Selecionar todos da lista (<span id="filteredCountLabel">0</span>)</span>
-            </label>
-            <span class="selected-badge" id="selectedBadge" hidden>
-              <strong id="selectedCount">0</strong> selecionado(s)
-              <button class="link-btn" id="btnClearSelection">Limpar seleção</button>
-            </span>
-          </div>
-          <div class="selection-actions">
-            <button class="btn btn-sm btn-secondary" id="btnPrintFiltered">Imprimir Filtrados</button>
-            <button class="btn btn-sm btn-primary-outline" id="btnPdfFiltered">Gerar PDF Filtrados</button>
+          <div class="selection-bar" id="selectionBar">
+            <div class="selection-info">
+              <label class="checkbox-inline">
+                <input type="checkbox" id="selectAllCheckbox" />
+                <span>Selecionar todos da lista (<span id="filteredCountLabel">0</span>)</span>
+              </label>
+              <span class="selected-badge" id="selectedBadge" hidden>
+                <strong id="selectedCount">0</strong> selecionado(s)
+                <button class="link-btn" id="btnClearSelection">Limpar seleção</button>
+              </span>
+            </div>
+            <div class="selection-actions">
+              <button class="btn btn-sm btn-secondary" id="btnPrintFiltered">Imprimir Filtrados</button>
+              <button class="btn btn-sm btn-primary-outline" id="btnPdfFiltered">Gerar PDF Filtrados</button>
+            </div>
           </div>
         </div>
 
@@ -407,14 +409,14 @@
               </div>
             </div>
             <div class="field">
-              <label for="printUsuario">Usuário (rodapé — vazio p/ omitir)</label>
-              <input type="text" id="printUsuario" placeholder="Deixe vazio para não exibir" />
+              <label for="printUsuario">Usuário (rodapé)</label>
+              <input type="text" id="printUsuario" placeholder="Vazio para omitir" />
             </div>
-            <div class="field field-sm">
-              <label for="printData">Data (rodapé — vazio p/ omitir)</label>
-              <input type="text" id="printData" maxlength="10" placeholder="DD/MM/AAAA ou vazio" />
+            <div class="field">
+              <label for="printData">Data (rodapé)</label>
+              <input type="text" id="printData" maxlength="10" placeholder="Vazio para omitir" />
             </div>
-            <div class="field field-sm">
+            <div class="field">
               <label for="printScope">Registros</label>
               <select id="printScope">
                 <option value="filtered">Lista filtrada atual</option>
