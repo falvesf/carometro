@@ -352,20 +352,9 @@ body {
   border: 1px solid var(--border);
 }
 
-.stat-prof {
-  background: #eef4ff;
-  border-color: #cfe0ff;
-}
-
-.stat-func {
-  background: #fef6e7;
-  border-color: #f9dfb0;
-}
-
-.stat-active {
-  background: #eafaf0;
-  border-color: #c2ebd0;
-}
+.stat-prof { background: #eef4ff; border-color: #cfe0ff; }
+.stat-func { background: #fef6e7; border-color: #f9dfb0; }
+.stat-active { background: #eafaf0; border-color: #c2ebd0; }
 
 /* Main */
 .main-content {
@@ -626,20 +615,9 @@ body {
   opacity: 0.72;
 }
 
-.col-check {
-  width: 34px;
-  text-align: center;
-}
-
-.col-photo {
-  width: 54px;
-}
-
-.col-actions {
-  width: 170px;
-  text-align: right;
-  white-space: nowrap;
-}
+.col-check { width: 34px; text-align: center; }
+.col-photo { width: 54px; }
+.col-actions { width: 170px; text-align: right; white-space: nowrap; }
 
 .thumb-photo {
   width: 40px;
@@ -682,21 +660,9 @@ body {
   border-radius: 999px;
 }
 
-.badge-prof {
-  background: #e8f0fe;
-  color: #1a4d9e;
-}
-
-.badge-func {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.badge-dem {
-  background: #fee2e2;
-  color: #991b1b;
-  margin-left: 4px;
-}
+.badge-prof { background: #e8f0fe; color: #1a4d9e; }
+.badge-func { background: #fef3c7; color: #92400e; }
+.badge-dem { background: #fee2e2; color: #991b1b; margin-left: 4px; }
 
 .check-mini {
   width: 16px;
@@ -724,8 +690,7 @@ body {
   z-index: 45;
 }
 
-.nav-buttons,
-.nav-actions {
+.nav-buttons, .nav-actions {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -893,37 +858,15 @@ body {
   box-shadow: 0 0 0 3px rgba(14, 58, 109, 0.1);
 }
 
-.span-2 {
-  grid-column: span 2;
-}
-
-.span-3 {
-  grid-column: span 3;
-}
-
-.span-4 {
-  grid-column: span 4;
-}
-
-.span-5 {
-  grid-column: span 5;
-}
-
-.span-6 {
-  grid-column: span 6;
-}
-
-.span-12 {
-  grid-column: span 12;
-}
+.span-2 { grid-column: span 2; }
+.span-3 { grid-column: span 3; }
+.span-4 { grid-column: span 4; }
+.span-5 { grid-column: span 5; }
+.span-6 { grid-column: span 6; }
+.span-12 { grid-column: span 12; }
 
 @media (max-width: 720px) {
-
-  .span-2,
-  .span-3,
-  .span-4,
-  .span-5,
-  .span-6 {
+  .span-2, .span-3, .span-4, .span-5, .span-6 {
     grid-column: span 12;
   }
 }
@@ -1163,8 +1106,7 @@ body {
 
 .cm-cpf {
   position: absolute;
-  left: 390pt;
-  /* 408pt from page left - 18pt margin */
+  left: 390pt; /* 408pt from page left - 18pt margin */
   top: 0;
   font-size: 8.95pt;
   font-weight: normal;
@@ -1195,8 +1137,7 @@ body {
 
 .cm-col-2-email {
   position: absolute;
-  left: 174pt;
-  /* 192pt - 18pt */
+  left: 174pt; /* 192pt - 18pt */
   top: 0;
   width: 91pt;
   white-space: nowrap;
@@ -1205,8 +1146,7 @@ body {
 
 .cm-col-3-email {
   position: absolute;
-  left: 267pt;
-  /* 285pt - 18pt */
+  left: 267pt; /* 285pt - 18pt */
   top: 0;
   width: 213pt;
   white-space: nowrap;
@@ -1216,8 +1156,7 @@ body {
 
 .cm-col-2 {
   position: absolute;
-  left: 174pt;
-  /* 192pt - 18pt */
+  left: 174pt; /* 192pt - 18pt */
   top: 0;
   width: 166pt;
   white-space: nowrap;
@@ -1226,8 +1165,7 @@ body {
 
 .cm-col-3 {
   position: absolute;
-  left: 342pt;
-  /* 360pt - 18pt */
+  left: 342pt; /* 360pt - 18pt */
   top: 0;
   width: 138pt;
   white-space: nowrap;
@@ -1235,8 +1173,7 @@ body {
 
 .cm-check-icon {
   position: absolute;
-  left: 114pt;
-  /* 474 - 360 = 114pt */
+  left: 114pt; /* 474 - 360 = 114pt */
   top: -1pt;
   width: 14.25pt;
   height: 11.8pt;
@@ -1251,8 +1188,7 @@ body {
 
 .cm-photo-box {
   position: absolute;
-  left: 484.5pt;
-  /* 502.5 - 18 */
+  left: 484.5pt; /* 502.5 - 18 */
   top: 3pt;
   width: 75pt;
   height: 87pt;
@@ -1536,8 +1472,7 @@ body {
     margin: 0;
   }
 
-  html,
-  body {
+  html, body {
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
