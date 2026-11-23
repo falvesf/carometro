@@ -11,5 +11,5 @@ export const firebaseConfig = {
 // E-mails com permissão de Administrador (devem bater com isAdmin() nas Regras do Firestore)
 export const ADMIN_EMAILS = [
   "falvesf@gmail.com",
-  "fabio.feitoza@adm.educadventista.org"
+  "fabio.feitoza@eaportal.org"
 ];
