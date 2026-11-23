@@ -38,7 +38,7 @@ const state = {
   employees: [],
   stats: { total: 0, professores: 0, funcionarios: 0, ativos: 0, demitidos: 0 },
   settings: {
-    escola_nome: 'Escola Adventista de Ibiúna',
+    escola_nome: 'Colégio Adventista de Ibiúna',
     titulo_relatorio: 'CARÔMETRO GERAL - 2026 - ANO LETIVO',
     usuario_rodape: 'daniele.moraes@adm.educadventista.org',
   },
@@ -220,14 +220,14 @@ function setAddressFields(emp) {
   const parts =
     emp && emp.endereco_partes && typeof emp.endereco_partes === 'object'
       ? {
-          cep: emp.endereco_partes.cep || '',
-          rua: emp.endereco_partes.rua || '',
-          numero: emp.endereco_partes.numero || '',
-          complemento: emp.endereco_partes.complemento || '',
-          bairro: emp.endereco_partes.bairro || '',
-          cidade: emp.endereco_partes.cidade || '',
-          uf: emp.endereco_partes.uf || '',
-        }
+        cep: emp.endereco_partes.cep || '',
+        rua: emp.endereco_partes.rua || '',
+        numero: emp.endereco_partes.numero || '',
+        complemento: emp.endereco_partes.complemento || '',
+        bairro: emp.endereco_partes.bairro || '',
+        cidade: emp.endereco_partes.cidade || '',
+        uf: emp.endereco_partes.uf || '',
+      }
       : parseAddressString(emp?.endereco || '');
 
   $('fEndCep').value = parts.cep;
@@ -380,8 +380,8 @@ function renderPhoneRows() {
       <div class="phone-row" data-phone-idx="${idx}">
         <select class="phone-type-select" aria-label="Tipo de contato">
           ${PHONE_TYPES.map(
-            (t) => `<option value="${escapeHtml(t)}" ${row.tipo === t ? 'selected' : ''}>${escapeHtml(t)}</option>`
-          ).join('')}
+        (t) => `<option value="${escapeHtml(t)}" ${row.tipo === t ? 'selected' : ''}>${escapeHtml(t)}</option>`
+      ).join('')}
         </select>
         <input
           type="text"
@@ -638,78 +638,82 @@ async function enterMainApp(user, isAdmin) {
   showScreen('app');
   $('userBadge').textContent = user.email || user.displayName || 'Usuário';
   $('adminAccessSection').hidden = !isAdmin;
-  if (!$('printData').dataset.edited) {
-    $('printData').value = formatTodayBR();
-  }
-  if (!$('printUsuario').dataset.edited) {
-    $('printUsuario').value = user.email || '';
-  }
-
-  // Subscribe to settings
-  const unsubSettings = onSnapshot(doc(db, 'settings', 'geral'), (snap) => {
-    if (snap.exists()) {
-      state.settings = { ...state.settings, ...snap.data() };
+  if (!$('printData').value) {
+    if (!$('printData').dataset.edited) {
+      $('printData').value = formatTodayBR();
     }
-    $('headerSchoolName').textContent = state.settings.escola_nome || 'Escola Adventista de Ibiúna';
-    if (!$('printTitulo').dataset.edited) {
-      $('printTitulo').value = state.settings.titulo_relatorio || 'CARÔMETRO GERAL - 2026 - ANO LETIVO';
+    if (!$('printUsuario').dataset.edited) {
+      $('printUsuario').value = user.email || '';
     }
-    if (state.activeTab === 'impressao') renderPrintPreview();
-  });
-  state.unsubs.push(unsubSettings);
 
-  // Subscribe to employees
-  const unsubEmp = onSnapshot(
-    collection(db, 'employees'),
-    (snapshot) => {
-      const list = [];
-      snapshot.forEach((d) => {
-        list.push({ id: d.id, ...d.data() });
+    // Subscribe to settings
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'geral'), (snap) => {
+      if (snap.exists()) {
+        state.settings = { ...state.settings, ...snap.data() };
+      }
+      $('headerSchoolName').textContent = state.settings.escola_nome || 'Escola Adventista de Ibiúna';
+      if (!$('printTitulo').dataset.edited) {
+        $('printTitulo').value = state.settings.titulo_relatorio || 'CARÔMETRO GERAL - 2026 - ANO LETIVO';
+      }
+      if (!$('printUsuario').dataset.edited) {
+        $('printUsuario').value = state.settings.usuario_rodape || '';
+      }
+      if (state.activeTab === 'impressao') renderPrintPreview();
+    });
+    state.unsubs.push(unsubSettings);
+
+    // Subscribe to employees
+    const unsubEmp = onSnapshot(
+      collection(db, 'employees'),
+      (snapshot) => {
+        const list = [];
+        snapshot.forEach((d) => {
+          list.push({ id: d.id, ...d.data() });
+        });
+        state.allEmployees = list;
+        applyFiltersAndRender();
+      },
+      (err) => {
+        showToast('Erro ao carregar funcionários: ' + err.message, 'error');
+      }
+    );
+    state.unsubs.push(unsubEmp);
+
+    // Admin: subscribe to pending access requests & authorized users
+    if (isAdmin) {
+      const unsubReq = onSnapshot(collection(db, 'access_requests'), (snapshot) => {
+        const reqs = [];
+        snapshot.forEach((d) => reqs.push({ id: d.id, ...d.data() }));
+        state.accessRequests = reqs;
+        renderAdminNotifications();
       });
-      state.allEmployees = list;
-      applyFiltersAndRender();
-    },
-    (err) => {
-      showToast('Erro ao carregar funcionários: ' + err.message, 'error');
+      const unsubAuthUsers = onSnapshot(collection(db, 'authorized_users'), (snapshot) => {
+        const users = [];
+        snapshot.forEach((d) => users.push({ id: d.id, ...d.data() }));
+        state.authorizedUsers = users;
+        renderAdminNotifications();
+      });
+      state.unsubs.push(unsubReq, unsubAuthUsers);
     }
-  );
-  state.unsubs.push(unsubEmp);
-
-  // Admin: subscribe to pending access requests & authorized users
-  if (isAdmin) {
-    const unsubReq = onSnapshot(collection(db, 'access_requests'), (snapshot) => {
-      const reqs = [];
-      snapshot.forEach((d) => reqs.push({ id: d.id, ...d.data() }));
-      state.accessRequests = reqs;
-      renderAdminNotifications();
-    });
-    const unsubAuthUsers = onSnapshot(collection(db, 'authorized_users'), (snapshot) => {
-      const users = [];
-      snapshot.forEach((d) => users.push({ id: d.id, ...d.data() }));
-      state.authorizedUsers = users;
-      renderAdminNotifications();
-    });
-    state.unsubs.push(unsubReq, unsubAuthUsers);
-  }
-}
-
-function renderAdminNotifications() {
-  if (!state.isAdmin) {
-    $('adminRequestsBanner').hidden = true;
-    return;
   }
 
-  const pending = state.accessRequests.filter((r) => r.status === 'pending');
-  const banner = $('adminRequestsBanner');
+  function renderAdminNotifications() {
+    if (!state.isAdmin) {
+      $('adminRequestsBanner').hidden = true;
+      return;
+    }
 
-  if (pending.length === 0) {
-    banner.hidden = true;
-    banner.innerHTML = '';
-  } else {
-    banner.hidden = false;
-    banner.innerHTML = pending
-      .map(
-        (req) => `
+    const pending = state.accessRequests.filter((r) => r.status === 'pending');
+    const banner = $('adminRequestsBanner');
+
+    if (pending.length === 0) {
+      banner.hidden = true;
+      banner.innerHTML = '';
+    } else {
+      banner.hidden = false;
+      banner.innerHTML = pending
+        .map(
+          (req) => `
       <div class="admin-req-row">
         <div>
           <strong>Solicitação de acesso pendente:</strong>
@@ -721,25 +725,25 @@ function renderAdminNotifications() {
         </div>
       </div>
     `
-      )
-      .join('');
+        )
+        .join('');
 
-    banner.querySelectorAll('[data-approve]').forEach((btn) => {
-      btn.addEventListener('click', () => approveUserAccess(btn.dataset.approve));
-    });
-    banner.querySelectorAll('[data-reject]').forEach((btn) => {
-      btn.addEventListener('click', () => rejectUserAccess(btn.dataset.reject));
-    });
-  }
+      banner.querySelectorAll('[data-approve]').forEach((btn) => {
+        btn.addEventListener('click', () => approveUserAccess(btn.dataset.approve));
+      });
+      banner.querySelectorAll('[data-reject]').forEach((btn) => {
+        btn.addEventListener('click', () => rejectUserAccess(btn.dataset.reject));
+      });
+    }
 
-  // Also update modal access manager
-  const listEl = $('accessManagerList');
-  if (!listEl) return;
-  const activeUsers = state.authorizedUsers.filter((u) => u.active === true);
-  const itemsHtml = [];
+    // Also update modal access manager
+    const listEl = $('accessManagerList');
+    if (!listEl) return;
+    const activeUsers = state.authorizedUsers.filter((u) => u.active === true);
+    const itemsHtml = [];
 
-  for (const req of pending) {
-    itemsHtml.push(`
+    for (const req of pending) {
+      itemsHtml.push(`
       <div class="access-item">
         <div class="access-item-meta">
           <strong>${escapeHtml(req.email)}</strong>
@@ -751,10 +755,10 @@ function renderAdminNotifications() {
         </div>
       </div>
     `);
-  }
+    }
 
-  for (const u of activeUsers) {
-    itemsHtml.push(`
+    for (const u of activeUsers) {
+      itemsHtml.push(`
       <div class="access-item">
         <div class="access-item-meta">
           <strong>${escapeHtml(u.email)}</strong>
@@ -763,220 +767,220 @@ function renderAdminNotifications() {
         <button type="button" class="btn btn-sm btn-danger-outline" data-revoke="${escapeHtml(u.email)}">Revogar</button>
       </div>
     `);
-  }
-
-  listEl.innerHTML =
-    itemsHtml.length > 0
-      ? itemsHtml.join('')
-      : '<p class="muted" style="margin:0;">Nenhum usuário adicional autorizado ainda.</p>';
-
-  listEl.querySelectorAll('[data-approve]').forEach((btn) => {
-    btn.addEventListener('click', () => approveUserAccess(btn.dataset.approve));
-  });
-  listEl.querySelectorAll('[data-reject]').forEach((btn) => {
-    btn.addEventListener('click', () => rejectUserAccess(btn.dataset.reject));
-  });
-  listEl.querySelectorAll('[data-revoke]').forEach((btn) => {
-    btn.addEventListener('click', () => revokeUserAccess(btn.dataset.revoke));
-  });
-}
-
-async function approveUserAccess(email) {
-  const emailLower = String(email).toLowerCase();
-  const reqItem = state.accessRequests.find((r) => r.email === emailLower);
-  try {
-    await setDoc(doc(db, 'authorized_users', emailLower), {
-      email: emailLower,
-      displayName: reqItem?.displayName || '',
-      active: true,
-      approvedBy: state.user?.email || '',
-      approvedAt: serverTimestamp(),
-    });
-    await setDoc(
-      doc(db, 'access_requests', emailLower),
-      { status: 'approved', reviewedAt: serverTimestamp() },
-      { merge: true }
-    );
-    showToast(`Acesso autorizado para ${emailLower}!`);
-  } catch (err) {
-    showToast('Erro ao autorizar: ' + err.message, 'error');
-  }
-}
-
-async function rejectUserAccess(email) {
-  const emailLower = String(email).toLowerCase();
-  try {
-    await setDoc(
-      doc(db, 'access_requests', emailLower),
-      { status: 'rejected', reviewedAt: serverTimestamp() },
-      { merge: true }
-    );
-    showToast(`Solicitação de ${emailLower} recusada.`);
-  } catch (err) {
-    showToast('Erro ao recusar: ' + err.message, 'error');
-  }
-}
-
-async function revokeUserAccess(email) {
-  const emailLower = String(email).toLowerCase();
-  try {
-    await deleteDoc(doc(db, 'authorized_users', emailLower));
-    await setDoc(
-      doc(db, 'access_requests', emailLower),
-      { status: 'rejected', reviewedAt: serverTimestamp() },
-      { merge: true }
-    );
-    showToast(`Acesso revogado para ${emailLower}.`);
-  } catch (err) {
-    showToast('Erro ao revogar: ' + err.message, 'error');
-  }
-}
-
-// =========================================================
-// Filtering, Sorting & Rendering (Client-Side on Firestore Snapshot)
-// =========================================================
-function computeStats(list) {
-  let professores = 0;
-  let funcionarios = 0;
-  let ativos = 0;
-  let demitidos = 0;
-  for (const emp of list) {
-    if (emp.tipo === 'Professor') professores++;
-    else funcionarios++;
-    if ((emp.data_demissao || '').trim()) demitidos++;
-    else ativos++;
-  }
-  return { total: list.length, professores, funcionarios, ativos, demitidos };
-}
-
-function sortEmployeeList(list, order) {
-  const arr = [...list];
-  const byName = (a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' });
-  const codeNum = (c) => {
-    const n = parseInt(String(c || '').replace(/\D/g, ''), 10);
-    return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
-  };
-
-  switch (order) {
-    case 'nome_desc':
-      arr.sort((a, b) => byName(b, a));
-      break;
-    case 'codigo_asc':
-      arr.sort((a, b) => codeNum(a.codigo) - codeNum(b.codigo) || byName(a, b));
-      break;
-    case 'codigo_desc':
-      arr.sort((a, b) => codeNum(b.codigo) - codeNum(a.codigo) || byName(a, b));
-      break;
-    case 'recentes':
-      arr.sort((a, b) => (b.updated_at_ms || 0) - (a.updated_at_ms || 0) || byName(a, b));
-      break;
-    case 'nome_asc':
-    default:
-      arr.sort(byName);
-      break;
-  }
-  return arr;
-}
-
-function applyFiltersAndRender() {
-  state.stats = computeStats(state.allEmployees);
-  const { q, tipo, status, assinatura, order } = state.filters;
-  const term = (q || '').trim().toLowerCase();
-  const termDigits = term.replace(/\D/g, '');
-
-  const filtered = state.allEmployees.filter((emp) => {
-    if (tipo && tipo !== 'Todos' && emp.tipo !== tipo) return false;
-    const isDem = Boolean((emp.data_demissao || '').trim());
-    if (status === 'Ativos' && isDem) return false;
-    if (status === 'Demitidos' && !isDem) return false;
-    if (assinatura === 'sim' && !emp.tem_assinatura_digitalizada) return false;
-    if (assinatura === 'nao' && emp.tem_assinatura_digitalizada) return false;
-
-    if (term) {
-      const hay = [
-        emp.nome,
-        emp.codigo,
-        emp.cpf,
-        emp.rg,
-        emp.email,
-        emp.endereco,
-        emp.telefones,
-        emp.cargo,
-      ]
-        .join(' ')
-        .toLowerCase();
-      const cpfDigits = (emp.cpf || '').replace(/\D/g, '');
-      const matchesText = hay.includes(term);
-      const matchesDigits = termDigits.length >= 3 && cpfDigits.includes(termDigits);
-      if (!matchesText && !matchesDigits) return false;
     }
-    return true;
-  });
 
-  state.employees = sortEmployeeList(filtered, order);
+    listEl.innerHTML =
+      itemsHtml.length > 0
+        ? itemsHtml.join('')
+        : '<p class="muted" style="margin:0;">Nenhum usuário adicional autorizado ainda.</p>';
 
-  const validIds = new Set(state.employees.map((e) => e.id));
-  for (const id of [...state.selectedIds]) {
-    if (!validIds.has(id)) state.selectedIds.delete(id);
+    listEl.querySelectorAll('[data-approve]').forEach((btn) => {
+      btn.addEventListener('click', () => approveUserAccess(btn.dataset.approve));
+    });
+    listEl.querySelectorAll('[data-reject]').forEach((btn) => {
+      btn.addEventListener('click', () => rejectUserAccess(btn.dataset.reject));
+    });
+    listEl.querySelectorAll('[data-revoke]').forEach((btn) => {
+      btn.addEventListener('click', () => revokeUserAccess(btn.dataset.revoke));
+    });
   }
-  if (state.currentIndex >= state.employees.length) {
-    state.currentIndex = Math.max(0, state.employees.length - 1);
+
+  async function approveUserAccess(email) {
+    const emailLower = String(email).toLowerCase();
+    const reqItem = state.accessRequests.find((r) => r.email === emailLower);
+    try {
+      await setDoc(doc(db, 'authorized_users', emailLower), {
+        email: emailLower,
+        displayName: reqItem?.displayName || '',
+        active: true,
+        approvedBy: state.user?.email || '',
+        approvedAt: serverTimestamp(),
+      });
+      await setDoc(
+        doc(db, 'access_requests', emailLower),
+        { status: 'approved', reviewedAt: serverTimestamp() },
+        { merge: true }
+      );
+      showToast(`Acesso autorizado para ${emailLower}!`);
+    } catch (err) {
+      showToast('Erro ao autorizar: ' + err.message, 'error');
+    }
   }
 
-  renderStats();
-  renderTable();
-  if (state.activeTab === 'ficha' && !state.isNewMode) {
-    loadCurrentRecordIntoForm();
+  async function rejectUserAccess(email) {
+    const emailLower = String(email).toLowerCase();
+    try {
+      await setDoc(
+        doc(db, 'access_requests', emailLower),
+        { status: 'rejected', reviewedAt: serverTimestamp() },
+        { merge: true }
+      );
+      showToast(`Solicitação de ${emailLower} recusada.`);
+    } catch (err) {
+      showToast('Erro ao recusar: ' + err.message, 'error');
+    }
   }
-  if (state.activeTab === 'impressao') {
-    renderPrintPreview();
+
+  async function revokeUserAccess(email) {
+    const emailLower = String(email).toLowerCase();
+    try {
+      await deleteDoc(doc(db, 'authorized_users', emailLower));
+      await setDoc(
+        doc(db, 'access_requests', emailLower),
+        { status: 'rejected', reviewedAt: serverTimestamp() },
+        { merge: true }
+      );
+      showToast(`Acesso revogado para ${emailLower}.`);
+    } catch (err) {
+      showToast('Erro ao revogar: ' + err.message, 'error');
+    }
   }
-}
 
-function renderStats() {
-  $('statTotal').textContent = state.stats.total ?? 0;
-  $('statProf').textContent = state.stats.professores ?? 0;
-  $('statFunc').textContent = state.stats.funcionarios ?? 0;
-  $('statAtivos').textContent = state.stats.ativos ?? 0;
-}
-
-function renderTable() {
-  const tbody = $('empTableBody');
-  const empty = $('emptyState');
-  $('filteredCountLabel').textContent = state.employees.length;
-
-  const selectedCount = state.selectedIds.size;
-  $('selectedCount').textContent = selectedCount;
-  $('selectedBadge').hidden = selectedCount === 0;
-
-  const allChecked =
-    state.employees.length > 0 && state.employees.every((e) => state.selectedIds.has(e.id));
-  $('selectAllCheckbox').checked = allChecked;
-
-  if (state.employees.length === 0) {
-    tbody.innerHTML = '';
-    empty.hidden = false;
-    return;
+  // =========================================================
+  // Filtering, Sorting & Rendering (Client-Side on Firestore Snapshot)
+  // =========================================================
+  function computeStats(list) {
+    let professores = 0;
+    let funcionarios = 0;
+    let ativos = 0;
+    let demitidos = 0;
+    for (const emp of list) {
+      if (emp.tipo === 'Professor') professores++;
+      else funcionarios++;
+      if ((emp.data_demissao || '').trim()) demitidos++;
+      else ativos++;
+    }
+    return { total: list.length, professores, funcionarios, ativos, demitidos };
   }
-  empty.hidden = true;
 
-  tbody.innerHTML = state.employees
-    .map((emp, idx) => {
-      const isDemitido = Boolean((emp.data_demissao || '').trim());
-      const checked = state.selectedIds.has(emp.id) ? 'checked' : '';
-      const photoHtml = emp.foto_data
-        ? `<img class="thumb-photo" src="${emp.foto_data}" alt="" loading="lazy" />`
-        : `<div class="thumb-empty">Sem foto</div>`;
-      const tipoBadge =
-        emp.tipo === 'Professor'
-          ? '<span class="badge badge-prof">Professor</span>'
-          : '<span class="badge badge-func">Funcionário</span>';
-      const demBadge = isDemitido ? '<span class="badge badge-dem">Demitido</span>' : '';
-      const assinHtml = emp.tem_assinatura_digitalizada
-        ? '<img class="check-mini" src="./assets/checkmark.png" alt="Sim" title="Tem assinatura digitalizada" />'
-        : '<span class="row-sub">Não</span>';
+  function sortEmployeeList(list, order) {
+    const arr = [...list];
+    const byName = (a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' });
+    const codeNum = (c) => {
+      const n = parseInt(String(c || '').replace(/\D/g, ''), 10);
+      return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+    };
 
-      return `
+    switch (order) {
+      case 'nome_desc':
+        arr.sort((a, b) => byName(b, a));
+        break;
+      case 'codigo_asc':
+        arr.sort((a, b) => codeNum(a.codigo) - codeNum(b.codigo) || byName(a, b));
+        break;
+      case 'codigo_desc':
+        arr.sort((a, b) => codeNum(b.codigo) - codeNum(a.codigo) || byName(a, b));
+        break;
+      case 'recentes':
+        arr.sort((a, b) => (b.updated_at_ms || 0) - (a.updated_at_ms || 0) || byName(a, b));
+        break;
+      case 'nome_asc':
+      default:
+        arr.sort(byName);
+        break;
+    }
+    return arr;
+  }
+
+  function applyFiltersAndRender() {
+    state.stats = computeStats(state.allEmployees);
+    const { q, tipo, status, assinatura, order } = state.filters;
+    const term = (q || '').trim().toLowerCase();
+    const termDigits = term.replace(/\D/g, '');
+
+    const filtered = state.allEmployees.filter((emp) => {
+      if (tipo && tipo !== 'Todos' && emp.tipo !== tipo) return false;
+      const isDem = Boolean((emp.data_demissao || '').trim());
+      if (status === 'Ativos' && isDem) return false;
+      if (status === 'Demitidos' && !isDem) return false;
+      if (assinatura === 'sim' && !emp.tem_assinatura_digitalizada) return false;
+      if (assinatura === 'nao' && emp.tem_assinatura_digitalizada) return false;
+
+      if (term) {
+        const hay = [
+          emp.nome,
+          emp.codigo,
+          emp.cpf,
+          emp.rg,
+          emp.email,
+          emp.endereco,
+          emp.telefones,
+          emp.cargo,
+        ]
+          .join(' ')
+          .toLowerCase();
+        const cpfDigits = (emp.cpf || '').replace(/\D/g, '');
+        const matchesText = hay.includes(term);
+        const matchesDigits = termDigits.length >= 3 && cpfDigits.includes(termDigits);
+        if (!matchesText && !matchesDigits) return false;
+      }
+      return true;
+    });
+
+    state.employees = sortEmployeeList(filtered, order);
+
+    const validIds = new Set(state.employees.map((e) => e.id));
+    for (const id of [...state.selectedIds]) {
+      if (!validIds.has(id)) state.selectedIds.delete(id);
+    }
+    if (state.currentIndex >= state.employees.length) {
+      state.currentIndex = Math.max(0, state.employees.length - 1);
+    }
+
+    renderStats();
+    renderTable();
+    if (state.activeTab === 'ficha' && !state.isNewMode) {
+      loadCurrentRecordIntoForm();
+    }
+    if (state.activeTab === 'impressao') {
+      renderPrintPreview();
+    }
+  }
+
+  function renderStats() {
+    $('statTotal').textContent = state.stats.total ?? 0;
+    $('statProf').textContent = state.stats.professores ?? 0;
+    $('statFunc').textContent = state.stats.funcionarios ?? 0;
+    $('statAtivos').textContent = state.stats.ativos ?? 0;
+  }
+
+  function renderTable() {
+    const tbody = $('empTableBody');
+    const empty = $('emptyState');
+    $('filteredCountLabel').textContent = state.employees.length;
+
+    const selectedCount = state.selectedIds.size;
+    $('selectedCount').textContent = selectedCount;
+    $('selectedBadge').hidden = selectedCount === 0;
+
+    const allChecked =
+      state.employees.length > 0 && state.employees.every((e) => state.selectedIds.has(e.id));
+    $('selectAllCheckbox').checked = allChecked;
+
+    if (state.employees.length === 0) {
+      tbody.innerHTML = '';
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+
+    tbody.innerHTML = state.employees
+      .map((emp, idx) => {
+        const isDemitido = Boolean((emp.data_demissao || '').trim());
+        const checked = state.selectedIds.has(emp.id) ? 'checked' : '';
+        const photoHtml = emp.foto_data
+          ? `<img class="thumb-photo" src="${emp.foto_data}" alt="" loading="lazy" />`
+          : `<div class="thumb-empty">Sem foto</div>`;
+        const tipoBadge =
+          emp.tipo === 'Professor'
+            ? '<span class="badge badge-prof">Professor</span>'
+            : '<span class="badge badge-func">Funcionário</span>';
+        const demBadge = isDemitido ? '<span class="badge badge-dem">Demitido</span>' : '';
+        const assinHtml = emp.tem_assinatura_digitalizada
+          ? '<img class="check-mini" src="./assets/checkmark.png" alt="Sim" title="Tem assinatura digitalizada" />'
+          : '<span class="row-sub">Não</span>';
+
+        return `
         <tr data-index="${idx}" data-id="${escapeHtml(emp.id)}" class="${isDemitido ? 'is-demitido' : ''}">
           <td class="col-check" onclick="event.stopPropagation()">
             <input type="checkbox" class="row-checkbox" data-id="${escapeHtml(emp.id)}" ${checked} />
@@ -1001,219 +1005,222 @@ function renderTable() {
           </td>
         </tr>
       `;
-    })
-    .join('');
+      })
+      .join('');
 
-  tbody.querySelectorAll('tr').forEach((tr) => {
-    tr.addEventListener('click', () => {
-      openRecordInFicha(parseInt(tr.dataset.index, 10));
+    tbody.querySelectorAll('tr').forEach((tr) => {
+      tr.addEventListener('click', () => {
+        openRecordInFicha(parseInt(tr.dataset.index, 10));
+      });
     });
-  });
 
-  tbody.querySelectorAll('.row-checkbox').forEach((cb) => {
-    cb.addEventListener('change', () => {
-      const id = cb.dataset.id;
-      if (cb.checked) state.selectedIds.add(id);
-      else state.selectedIds.delete(id);
-      renderTable();
+    tbody.querySelectorAll('.row-checkbox').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const id = cb.dataset.id;
+        if (cb.checked) state.selectedIds.add(id);
+        else state.selectedIds.delete(id);
+        renderTable();
+      });
     });
-  });
 
-  tbody.querySelectorAll('button[data-action="edit"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      openRecordInFicha(parseInt(btn.dataset.index, 10));
+    tbody.querySelectorAll('button[data-action="edit"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openRecordInFicha(parseInt(btn.dataset.index, 10));
+      });
     });
-  });
 
-  tbody.querySelectorAll('button[data-action="delete"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      askDeleteEmployee(btn.dataset.id);
+    tbody.querySelectorAll('button[data-action="delete"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        askDeleteEmployee(btn.dataset.id);
+      });
     });
-  });
-}
-
-// =========================================================
-// Tabs & Ficha / Navigator
-// =========================================================
-function switchTab(tabName) {
-  state.activeTab = tabName;
-  document.querySelectorAll('.tab').forEach((t) => {
-    t.classList.toggle('active', t.dataset.tab === tabName);
-  });
-  document.querySelectorAll('.tab-panel').forEach((p) => {
-    p.classList.toggle('active', p.id === `tab-${tabName}`);
-  });
-
-  if (tabName === 'ficha') {
-    if (!state.isNewMode) loadCurrentRecordIntoForm();
-  } else if (tabName === 'impressao') {
-    renderPrintPreview();
-  }
-}
-
-function clearPendingPhotoState() {
-  state.pendingPhotoDataUrl = '';
-  if (state.rawPhotoObjectUrl) URL.revokeObjectURL(state.rawPhotoObjectUrl);
-  state.rawPhotoObjectUrl = '';
-  state.removePhotoFlag = false;
-}
-
-function openRecordInFicha(index) {
-  state.isNewMode = false;
-  state.currentIndex = Math.max(0, Math.min(index, state.employees.length - 1));
-  switchTab('ficha');
-  loadCurrentRecordIntoForm();
-}
-
-function startNewEmployeeForm() {
-  state.isNewMode = true;
-  clearPendingPhotoState();
-
-  $('empId').value = '';
-  $('fCodigo').value = '';
-  $('fNome').value = '';
-  $('fCpf').value = '';
-  $('fTipo').value = state.filters.tipo === 'Professor' ? 'Professor' : 'Funcionário';
-  setCargoValue(state.filters.tipo === 'Professor' ? 'Professor(a)' : '');
-  $('fEmail').value = '';
-  setAddressFields(null);
-  $('fNascimento').value = '';
-  $('fSexo').value = '';
-  $('fRg').value = '';
-  $('fEmitidoPor').value = 'SSP/SP';
-  $('fDataEmissao').value = '';
-  $('fDataContratacao').value = '';
-  $('fDataDemissao').value = '';
-  $('fAssinatura').checked = true;
-  setPhoneRowsFromString('');
-
-  updatePhotoEditorUI('');
-  updateNavButtons();
-  $('fichaModePill').textContent = 'Novo cadastro';
-  $('btnFichaDelete').disabled = true;
-  $('btnFichaPrintOne').disabled = true;
-  $('btnFichaPdfOne').disabled = true;
-  renderLiveCardPreview();
-  switchTab('ficha');
-  $('fNome').focus();
-}
-
-function loadCurrentRecordIntoForm() {
-  if (state.employees.length === 0) {
-    startNewEmployeeForm();
-    return;
   }
 
-  state.isNewMode = false;
-  clearPendingPhotoState();
+  // =========================================================
+  // Tabs & Ficha / Navigator
+  // =========================================================
+  function switchTab(tabName) {
+    state.activeTab = tabName;
+    document.querySelectorAll('.tab').forEach((t) => {
+      t.classList.toggle('active', t.dataset.tab === tabName);
+    });
+    document.querySelectorAll('.tab-panel').forEach((p) => {
+      p.classList.toggle('active', p.id === `tab-${tabName}`);
+    });
 
-  const emp = state.employees[state.currentIndex];
-  $('empId').value = emp.id;
-  $('fCodigo').value = emp.codigo || '';
-  $('fNome').value = emp.nome || '';
-  $('fCpf').value = emp.cpf || '';
-  $('fTipo').value = emp.tipo || 'Funcionário';
-  setCargoValue(emp.cargo || '');
-  $('fEmail').value = emp.email || '';
-  setAddressFields(emp);
-  $('fNascimento').value = emp.data_nascimento || '';
-  $('fSexo').value = emp.sexo || '';
-  $('fRg').value = emp.rg || '';
-  $('fEmitidoPor').value = emp.emitido_por || '';
-  $('fDataEmissao').value = emp.data_emissao || '';
-  $('fDataContratacao').value = emp.data_contratacao || '';
-  $('fDataDemissao').value = emp.data_demissao || '';
-  $('fAssinatura').checked = Boolean(emp.tem_assinatura_digitalizada);
-  setPhoneRowsFromString(emp.telefones || '');
-
-  updatePhotoEditorUI(emp.foto_data || '');
-  updateNavButtons();
-  $('fichaModePill').textContent = `Editando #${emp.codigo || emp.id.slice(0, 6)}`;
-  $('btnFichaDelete').disabled = false;
-  $('btnFichaPrintOne').disabled = false;
-  $('btnFichaPdfOne').disabled = false;
-  renderLiveCardPreview();
-}
-
-function updateNavButtons() {
-  const total = state.employees.length;
-  const idx = state.currentIndex;
-  if (state.isNewMode || total === 0) {
-    $('navCounter').textContent = state.isNewMode ? 'Novo Registro' : '0 de 0';
-    $('navFirst').disabled = total === 0;
-    $('navPrev').disabled = total === 0;
-    $('navNext').disabled = total === 0;
-    $('navLast').disabled = total === 0;
-    return;
-  }
-  $('navCounter').textContent = `Registro ${idx + 1} de ${total}`;
-  $('navFirst').disabled = idx <= 0;
-  $('navPrev').disabled = idx <= 0;
-  $('navNext').disabled = idx >= total - 1;
-  $('navLast').disabled = idx >= total - 1;
-}
-
-function updatePhotoEditorUI(url) {
-  const img = $('photoPreviewImg');
-  const ph = $('photoPlaceholder');
-  const btnAdjust = $('btnAdjustPhoto');
-  if (url) {
-    img.src = url;
-    img.hidden = false;
-    ph.hidden = true;
-    btnAdjust.hidden = false;
-  } else {
-    img.src = '';
-    img.hidden = true;
-    ph.hidden = false;
-    btnAdjust.hidden = true;
-  }
-}
-
-function getFormEmployeeSnapshot() {
-  const existing = !state.isNewMode ? state.employees[state.currentIndex] : null;
-  let photoData = '';
-  if (state.pendingPhotoDataUrl) {
-    photoData = state.pendingPhotoDataUrl;
-  } else if (!state.removePhotoFlag && existing?.foto_data) {
-    photoData = existing.foto_data;
+    if (tabName === 'ficha') {
+      if (!state.isNewMode) loadCurrentRecordIntoForm();
+    } else if (tabName === 'impressao') {
+      renderPrintPreview();
+    }
   }
 
-  const addrParts = getAddressParts();
-  return {
-    id: $('empId').value || null,
-    codigo: $('fCodigo').value.trim(),
-    nome: $('fNome').value.trim(),
-    cpf: $('fCpf').value.trim(),
-    tipo: $('fTipo').value,
-    cargo: getCargoValue(),
-    email: $('fEmail').value.trim(),
-    endereco_partes: addrParts,
-    endereco: composeAddressString(addrParts),
-    data_nascimento: $('fNascimento').value.trim(),
-    sexo: $('fSexo').value,
-    rg: $('fRg').value.trim(),
-    emitido_por: $('fEmitidoPor').value.trim(),
-    data_emissao: $('fDataEmissao').value.trim(),
-    data_contratacao: $('fDataContratacao').value.trim(),
-    data_demissao: $('fDataDemissao').value.trim(),
-    tem_assinatura_digitalizada: $('fAssinatura').checked ? 1 : 0,
-    telefones: serializePhoneRows(),
-    foto_data: photoData,
-  };
-}
+  function clearPendingPhotoState() {
+    state.pendingPhotoDataUrl = '';
+    if (state.rawPhotoObjectUrl) URL.revokeObjectURL(state.rawPhotoObjectUrl);
+    state.rawPhotoObjectUrl = '';
+    state.removePhotoFlag = false;
+  }
 
-function buildCardHtml(emp, standalone = false) {
-  const photoSrc = emp.foto_data || '';
-  const photoHtml = photoSrc
-    ? `<img src="${photoSrc}" alt="" />`
-    : `<div class="cm-photo-empty">Sem foto</div>`;
+  function openRecordInFicha(index) {
+    state.isNewMode = false;
+    state.currentIndex = Math.max(0, Math.min(index, state.employees.length - 1));
+    switchTab('ficha');
+    loadCurrentRecordIntoForm();
+  }
 
-  const checkHtml = emp.tem_assinatura_digitalizada
-    ? `<img src="./assets/checkmark.png" class="cm-check-icon" alt="Sim" />`
-    : '';
+  function startNewEmployeeForm() {
+    state.isNewMode = true;
+    clearPendingPhotoState();
 
-  return `
+    $('empId').value = '';
+    $('fCodigo').value = '';
+    $('fNome').value = '';
+    $('fCpf').value = '';
+    $('fTipo').value = state.filters.tipo === 'Professor' ? 'Professor' : 'Funcionário';
+    setCargoValue(state.filters.tipo === 'Professor' ? 'Professor(a)' : '');
+    $('fEmail').value = '';
+    $('fEndereco').value = '';
+    setAddressFields(null);
+    $('fNascimento').value = '';
+    $('fSexo').value = '';
+    $('fRg').value = '';
+    $('fEmitidoPor').value = 'SSP/SP';
+    $('fDataEmissao').value = '';
+    $('fDataContratacao').value = '';
+    $('fDataDemissao').value = '';
+    $('fAssinatura').checked = true;
+    setPhoneRowsFromString('');
+
+    updatePhotoEditorUI('');
+    updateNavButtons();
+    $('fichaModePill').textContent = 'Novo cadastro';
+    $('btnFichaDelete').disabled = true;
+    $('btnFichaPrintOne').disabled = true;
+    $('btnFichaPdfOne').disabled = true;
+    renderLiveCardPreview();
+    switchTab('ficha');
+    $('fNome').focus();
+  }
+
+  function loadCurrentRecordIntoForm() {
+    if (state.employees.length === 0) {
+      startNewEmployeeForm();
+      return;
+    }
+
+    state.isNewMode = false;
+    clearPendingPhotoState();
+
+    const emp = state.employees[state.currentIndex];
+    $('empId').value = emp.id;
+    $('fCodigo').value = emp.codigo || '';
+    $('fNome').value = emp.nome || '';
+    $('fCpf').value = emp.cpf || '';
+    $('fTipo').value = emp.tipo || 'Funcionário';
+    setCargoValue(emp.cargo || '');
+    $('fEmail').value = emp.email || '';
+    $('fEndereco').value = emp.endereco || '';
+    setAddressFields(emp);
+    $('fNascimento').value = emp.data_nascimento || '';
+    $('fSexo').value = emp.sexo || '';
+    $('fRg').value = emp.rg || '';
+    $('fEmitidoPor').value = emp.emitido_por || '';
+    $('fDataEmissao').value = emp.data_emissao || '';
+    $('fDataContratacao').value = emp.data_contratacao || '';
+    $('fDataDemissao').value = emp.data_demissao || '';
+    $('fAssinatura').checked = Boolean(emp.tem_assinatura_digitalizada);
+    setPhoneRowsFromString(emp.telefones || '');
+
+    updatePhotoEditorUI(emp.foto_data || '');
+    updateNavButtons();
+    $('fichaModePill').textContent = `Editando #${emp.codigo || emp.id.slice(0, 6)}`;
+    $('btnFichaDelete').disabled = false;
+    $('btnFichaPrintOne').disabled = false;
+    $('btnFichaPdfOne').disabled = false;
+    renderLiveCardPreview();
+  }
+
+  function updateNavButtons() {
+    const total = state.employees.length;
+    const idx = state.currentIndex;
+    if (state.isNewMode || total === 0) {
+      $('navCounter').textContent = state.isNewMode ? 'Novo Registro' : '0 de 0';
+      $('navFirst').disabled = total === 0;
+      $('navPrev').disabled = total === 0;
+      $('navNext').disabled = total === 0;
+      $('navLast').disabled = total === 0;
+      return;
+    }
+    $('navCounter').textContent = `Registro ${idx + 1} de ${total}`;
+    $('navFirst').disabled = idx <= 0;
+    $('navPrev').disabled = idx <= 0;
+    $('navNext').disabled = idx >= total - 1;
+    $('navLast').disabled = idx >= total - 1;
+  }
+
+  function updatePhotoEditorUI(url) {
+    const img = $('photoPreviewImg');
+    const ph = $('photoPlaceholder');
+    const btnAdjust = $('btnAdjustPhoto');
+    if (url) {
+      img.src = url;
+      img.hidden = false;
+      ph.hidden = true;
+      btnAdjust.hidden = false;
+    } else {
+      img.src = '';
+      img.hidden = true;
+      ph.hidden = false;
+      btnAdjust.hidden = true;
+    }
+  }
+
+  function getFormEmployeeSnapshot() {
+    const existing = !state.isNewMode ? state.employees[state.currentIndex] : null;
+    let photoData = '';
+    if (state.pendingPhotoDataUrl) {
+      photoData = state.pendingPhotoDataUrl;
+    } else if (!state.removePhotoFlag && existing?.foto_data) {
+      photoData = existing.foto_data;
+    }
+
+    const addrParts = getAddressParts();
+    return {
+      id: $('empId').value || null,
+      codigo: $('fCodigo').value.trim(),
+      nome: $('fNome').value.trim(),
+      cpf: $('fCpf').value.trim(),
+      tipo: $('fTipo').value,
+      cargo: getCargoValue(),
+      email: $('fEmail').value.trim(),
+      endereco: $('fEndereco').value.trim(),
+      endereco_partes: addrParts,
+      endereco: composeAddressString(addrParts),
+      data_nascimento: $('fNascimento').value.trim(),
+      sexo: $('fSexo').value,
+      rg: $('fRg').value.trim(),
+      emitido_por: $('fEmitidoPor').value.trim(),
+      data_emissao: $('fDataEmissao').value.trim(),
+      data_contratacao: $('fDataContratacao').value.trim(),
+      data_demissao: $('fDataDemissao').value.trim(),
+      tem_assinatura_digitalizada: $('fAssinatura').checked ? 1 : 0,
+      telefones: serializePhoneRows(),
+      foto_data: photoData,
+    };
+  }
+
+  function buildCardHtml(emp, standalone = false) {
+    const photoSrc = emp.foto_data || '';
+    const photoHtml = photoSrc
+      ? `<img src="${photoSrc}" alt="" />`
+      : `<div class="cm-photo-empty">Sem foto</div>`;
+
+    const checkHtml = emp.tem_assinatura_digitalizada
+      ? `<img src="./assets/checkmark.png" class="cm-check-icon" alt="Sim" />`
+      : '';
+
+    return `
     <div class="cm-card ${standalone ? 'cm-card-standalone' : ''}">
       <div class="cm-card-body">
         <div class="cm-row1">
@@ -1245,178 +1252,181 @@ function buildCardHtml(emp, standalone = false) {
       <div class="cm-photo-box">${photoHtml}</div>
     </div>
   `;
-}
-
-function renderLiveCardPreview() {
-  const snap = getFormEmployeeSnapshot();
-  $('liveCardPreview').innerHTML = buildCardHtml(snap, true);
-}
-
-// Photo handling
-function handleSelectedPhotoFile(file) {
-  if (!file) return;
-  const rawUrl = URL.createObjectURL(file);
-  openPhotoCropperFromUrl(rawUrl, true);
-}
-
-function openCurrentPhotoInCropper() {
-  const existing = !state.isNewMode ? state.employees[state.currentIndex] : null;
-  if (state.rawPhotoObjectUrl) {
-    openPhotoCropperFromUrl(state.rawPhotoObjectUrl, false);
-  } else if (state.pendingPhotoDataUrl) {
-    openPhotoCropperFromUrl(state.pendingPhotoDataUrl, false);
-  } else if (!state.removePhotoFlag && existing?.foto_data) {
-    openPhotoCropperFromUrl(existing.foto_data, false);
-  }
-}
-
-// =========================================================
-// Firestore CRUD (Add / Edit / Delete)
-// =========================================================
-async function handleSaveEmployee(e) {
-  e.preventDefault();
-  const snap = getFormEmployeeSnapshot();
-  if (!snap.nome) {
-    showToast('Informe o nome completo do funcionário.', 'error');
-    $('fNome').focus();
-    return;
   }
 
-  const record = {
-    codigo: snap.codigo,
-    nome: snap.nome,
-    cpf: snap.cpf,
-    tipo: snap.tipo,
-    cargo: snap.cargo,
-    email: snap.email,
-    endereco_partes: snap.endereco_partes,
-    endereco: snap.endereco,
-    data_nascimento: snap.data_nascimento,
-    sexo: snap.sexo,
-    rg: snap.rg,
-    emitido_por: snap.emitido_por,
-    data_emissao: snap.data_emissao,
-    data_contratacao: snap.data_contratacao,
-    data_demissao: snap.data_demissao,
-    tem_assinatura_digitalizada: snap.tem_assinatura_digitalizada ? 1 : 0,
-    telefones: snap.telefones,
-    foto_data: snap.foto_data || '',
-    updated_at_ms: Date.now(),
-  };
+  function renderLiveCardPreview() {
+    const snap = getFormEmployeeSnapshot();
+    $('liveCardPreview').innerHTML = buildCardHtml(snap, true);
+  }
 
-  const isNew = state.isNewMode || !snap.id;
-  const btn = $('btnSaveEmployee');
-  btn.disabled = true;
+  // Photo handling
+  function handleSelectedPhotoFile(file) {
+    if (!file) return;
+    const rawUrl = URL.createObjectURL(file);
+    openPhotoCropperFromUrl(rawUrl, true);
+  }
 
-  try {
-    let savedId = snap.id;
-    if (isNew) {
-      record.created_at_ms = Date.now();
-      const docRef = await addDoc(collection(db, 'employees'), record);
-      savedId = docRef.id;
-      showToast('Funcionário cadastrado no Firebase!');
-    } else {
-      await updateDoc(doc(db, 'employees', snap.id), record);
-      showToast('Cadastro atualizado!');
+  function openCurrentPhotoInCropper() {
+    const existing = !state.isNewMode ? state.employees[state.currentIndex] : null;
+    if (state.rawPhotoObjectUrl) {
+      openPhotoCropperFromUrl(state.rawPhotoObjectUrl, false);
+    } else if (state.pendingPhotoDataUrl) {
+      openPhotoCropperFromUrl(state.pendingPhotoDataUrl, false);
+    } else if (!state.removePhotoFlag && existing?.foto_data) {
+      openPhotoCropperFromUrl(existing.foto_data, false);
+    }
+  }
+
+  // =========================================================
+  // Firestore CRUD (Add / Edit / Delete)
+  // =========================================================
+  async function handleSaveEmployee(e) {
+    e.preventDefault();
+    const snap = getFormEmployeeSnapshot();
+    if (!snap.nome) {
+      showToast('Informe o nome completo do funcionário.', 'error');
+      $('fNome').focus();
+      return;
     }
 
-    state.isNewMode = false;
-    clearPendingPhotoState();
+    const record = {
+      codigo: snap.codigo,
+      nome: snap.nome,
+      cpf: snap.cpf,
+      tipo: snap.tipo,
+      cargo: snap.cargo,
+      email: snap.email,
+      endereco_partes: snap.endereco_partes,
+      endereco: snap.endereco,
+      data_nascimento: snap.data_nascimento,
+      sexo: snap.sexo,
+      rg: snap.rg,
+      emitido_por: snap.emitido_por,
+      data_emissao: snap.data_emissao,
+      data_contratacao: snap.data_contratacao,
+      data_demissao: snap.data_demissao,
+      tem_assinatura_digitalizada: snap.tem_assinatura_digitalizada ? 1 : 0,
+      telefones: snap.telefones,
+      foto_data: snap.foto_data || '',
+      updated_at_ms: Date.now(),
+    };
 
-    // Update currentIndex after snapshot refreshes
-    setTimeout(() => {
-      const idx = state.employees.findIndex((item) => item.id === savedId);
-      if (idx >= 0) {
-        state.currentIndex = idx;
-        loadCurrentRecordIntoForm();
+    const isNew = state.isNewMode || !snap.id;
+    const btn = $('btnSaveEmployee');
+    btn.disabled = true;
+
+    try {
+      let savedId = snap.id;
+      if (isNew) {
+        record.created_at_ms = Date.now();
+        const docRef = await addDoc(collection(db, 'employees'), record);
+        savedId = docRef.id;
+        showToast('Funcionário cadastrado no Firebase!');
+      } else {
+        await updateDoc(doc(db, 'employees', snap.id), record);
+        showToast('Cadastro atualizado!');
       }
-    }, 180);
-  } catch (err) {
-    showToast('Erro ao salvar: ' + err.message, 'error');
-  } finally {
-    btn.disabled = false;
-  }
-}
 
-function askDeleteEmployee(id) {
-  const emp = state.employees.find((e) => e.id === id);
-  if (!emp) return;
-  state.pendingDeleteId = id;
-  $('confirmMessage').textContent = `Deseja realmente excluir "${emp.nome}" (Código ${emp.codigo || 'S/N'})? Esta ação não pode ser desfeita.`;
-  $('confirmModal').hidden = false;
-}
+      state.isNewMode = false;
+      clearPendingPhotoState();
 
-async function confirmDeleteEmployee() {
-  const id = state.pendingDeleteId;
-  if (!id) return;
-  try {
-    await deleteDoc(doc(db, 'employees', id));
-    $('confirmModal').hidden = true;
-    state.pendingDeleteId = null;
-    state.selectedIds.delete(id);
-    showToast('Registro excluído com sucesso.');
-  } catch (err) {
-    showToast('Erro ao excluir: ' + err.message, 'error');
-  }
-}
-
-// =========================================================
-// Print A4 & Client-Side PDF Generation
-// =========================================================
-function getEmployeesForPrint(overrideScope = null, specificIds = null) {
-  const scope = overrideScope || $('printScope').value || 'filtered';
-  if (specificIds && specificIds.length > 0) {
-    return state.employees.filter((e) => specificIds.includes(e.id));
-  }
-  if (scope === 'selected') {
-    if (state.selectedIds.size === 0) {
-      showToast('Nenhum funcionário selecionado. Mostrando lista filtrada.', 'error');
-      return state.employees;
+      // Update currentIndex after snapshot refreshes
+      setTimeout(() => {
+        const idx = state.employees.findIndex((item) => item.id === savedId);
+        if (idx >= 0) {
+          state.currentIndex = idx;
+          loadCurrentRecordIntoForm();
+        }
+      }, 180);
+    } catch (err) {
+      showToast('Erro ao salvar: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
     }
-    return state.employees.filter((e) => state.selectedIds.has(e.id));
   }
-  if (scope === 'all') {
-    return sortEmployeeList(state.allEmployees, state.filters.order);
+
+  function askDeleteEmployee(id) {
+    const emp = state.employees.find((e) => e.id === id);
+    if (!emp) return;
+    state.pendingDeleteId = id;
+    $('confirmMessage').textContent = `Deseja realmente excluir "${emp.nome}" (Código ${emp.codigo || 'S/N'})? Esta ação não pode ser desfeita.`;
+    $('confirmModal').hidden = false;
   }
-  return state.employees;
-}
 
-function estimateHtmlCardHeightPt(emp) {
-  const addrLen = (`Endereço: ${emp.endereco || ''}`).length;
-  const addrLines = Math.max(1, Math.ceil(addrLen / 95));
-  const telLen = (`Telefones: ${emp.telefones || ''}`).length;
-  const telLines = Math.max(1, Math.ceil(telLen / 95));
-  return Math.max(96, 86 + (addrLines - 1) * 11.4 + (telLines - 1) * 11.4);
-}
+  async function confirmDeleteEmployee() {
+    const id = state.pendingDeleteId;
+    if (!id) return;
+    try {
+      await deleteDoc(doc(db, 'employees', id));
+      $('confirmModal').hidden = true;
+      state.pendingDeleteId = null;
+      state.selectedIds.delete(id);
+      showToast('Registro excluído com sucesso.');
+    } catch (err) {
+      showToast('Erro ao excluir: ' + err.message, 'error');
+    }
+  }
 
-function buildA4PagesHtml(employees) {
-  const escola = state.settings.escola_nome || 'Escola Adventista de Ibiúna';
-  const titulo = $('printTitulo').value.trim() || state.settings.titulo_relatorio;
-  const usuario = $('printUsuario').value.trim();
-  const dataStr = $('printData').value.trim();
+  // =========================================================
+  // Print A4 & Client-Side PDF Generation
+  // =========================================================
+  function getEmployeesForPrint(overrideScope = null, specificIds = null) {
+    const scope = overrideScope || $('printScope').value || 'filtered';
+    if (specificIds && specificIds.length > 0) {
+      return state.employees.filter((e) => specificIds.includes(e.id));
+    }
+    if (scope === 'selected') {
+      if (state.selectedIds.size === 0) {
+        showToast('Nenhum funcionário selecionado. Mostrando lista filtrada.', 'error');
+        return state.employees;
+      }
+      return state.employees.filter((e) => state.selectedIds.has(e.id));
+    }
+    if (scope === 'all') {
+      return sortEmployeeList(state.allEmployees, state.filters.order);
+    }
+    return state.employees;
+  }
 
-  const pages = [];
-  let current = [];
-  let y = 78.3;
-  for (const emp of employees) {
-    const h = estimateHtmlCardHeightPt(emp);
-    if (current.length >= 7 || (current.length > 0 && y + h > 792)) {
+  function estimateHtmlCardHeightPt(emp) {
+    const addrLen = (`Endereço: ${emp.endereco || ''}`).length;
+    const addrLines = Math.max(1, Math.ceil(addrLen / 95));
+    const telLen = (`Telefones: ${emp.telefones || ''}`).length;
+    const telLines = Math.max(1, Math.ceil(telLen / 95));
+    return Math.max(96, 86 + (addrLines - 1) * 11.4 + (telLines - 1) * 11.4);
+  }
+
+  function buildA4PagesHtml(employees) {
+    const escola = state.settings.escola_nome || 'Escola Adventista de Ibiúna';
+    const titulo = $('printTitulo').value || state.settings.titulo_relatorio;
+    const usuario = $('printUsuario').value || state.settings.usuario_rodape;
+    const dataStr = $('printData').value || formatTodayBR();
+    const titulo = $('printTitulo').value.trim() || state.settings.titulo_relatorio;
+    const usuario = $('printUsuario').value.trim();
+    const dataStr = $('printData').value.trim();
+
+    const pages = [];
+    let current = [];
+    let y = 78.3;
+    for (const emp of employees) {
+      const h = estimateHtmlCardHeightPt(emp);
+      if (current.length >= 7 || (current.length > 0 && y + h > 792)) {
+        pages.push(current);
+        current = [];
+        y = 78.3;
+      }
+      current.push(emp);
+      y += h;
+    }
+    if (current.length > 0 || pages.length === 0) {
       pages.push(current);
-      current = [];
-      y = 78.3;
     }
-    current.push(emp);
-    y += h;
-  }
-  if (current.length > 0 || pages.length === 0) {
-    pages.push(current);
-  }
 
-  const totalPages = pages.length;
-  return pages
-    .map((group, pIdx) => {
-      const cardsHtml = group.map((emp) => buildCardHtml(emp, false)).join('');
-      return `
+    const totalPages = pages.length;
+    return pages
+      .map((group, pIdx) => {
+        const cardsHtml = group.map((emp) => buildCardHtml(emp, false)).join('');
+        return `
         <div class="a4-page">
           <div class="cm-header">
             <img src="./assets/logo.png" alt="Educação Adventista" class="cm-logo" />
@@ -1425,511 +1435,521 @@ function buildA4PagesHtml(employees) {
           </div>
           <div class="cm-cards">${cardsHtml}</div>
           <div class="cm-footer">
+            <span>${escapeHtml(dataStr)}</span>
+            <span>Usuário:${escapeHtml(usuario)}</span>
             <span>${dataStr ? escapeHtml(dataStr) : ''}</span>
             <span>${usuario ? `Usuário:${escapeHtml(usuario)}` : ''}</span>
             <span>${pIdx + 1}/${totalPages}</span>
           </div>
         </div>
       `;
-    })
-    .join('');
-}
+      })
+      .join('');
+  }
 
-function renderPrintPreview() {
-  const list = getEmployeesForPrint();
-  const html = buildA4PagesHtml(list);
-  $('printPreviewContainer').innerHTML = html;
-  $('printOnlyRoot').innerHTML = html;
-}
+  function renderPrintPreview() {
+    const list = getEmployeesForPrint();
+    const html = buildA4PagesHtml(list);
+    $('printPreviewContainer').innerHTML = html;
+    $('printOnlyRoot').innerHTML = html;
+  }
 
-function triggerBrowserPrint(overrideScope = null, specificIds = null) {
-  const list = getEmployeesForPrint(overrideScope, specificIds);
-  $('printOnlyRoot').innerHTML = buildA4PagesHtml(list);
-  window.print();
-}
-
-async function downloadPdf(overrideScope = null, specificIds = null, inline = false) {
-  try {
+  function triggerBrowserPrint(overrideScope = null, specificIds = null) {
     const list = getEmployeesForPrint(overrideScope, specificIds);
-    showToast('Gerando PDF...');
-    const blob = await generateCarometroPdfBlob(list, {
-      escola_nome: state.settings.escola_nome || 'Escola Adventista de Ibiúna',
-      titulo_relatorio: $('printTitulo').value.trim() || state.settings.titulo_relatorio,
-      usuario_rodape: $('printUsuario').value.trim(),
-      data_impressao: $('printData').value.trim(),
-    });
-    const url = URL.createObjectURL(blob);
-    if (inline) {
-      window.open(url, '_blank');
-    } else {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `carometro_${new Date().toISOString().slice(0, 10)}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    }
-  } catch (err) {
-    showToast('Erro ao gerar PDF: ' + err.message, 'error');
+    $('printOnlyRoot').innerHTML = buildA4PagesHtml(list);
+    window.print();
   }
-}
 
-// =========================================================
-// Settings, Backup & Import
-// =========================================================
-function openSettingsModal() {
-  $('sEscola').value = state.settings.escola_nome || '';
-  $('sTitulo').value = state.settings.titulo_relatorio || '';
-  $('sUsuario').value = state.settings.usuario_rodape || '';
-  renderAdminNotifications();
-  $('settingsModal').hidden = false;
-}
-
-async function saveSettings(e) {
-  e.preventDefault();
-  const payload = {
-    escola_nome: $('sEscola').value.trim() || 'Escola Adventista de Ibiúna',
-    titulo_relatorio: $('sTitulo').value.trim() || 'CARÔMETRO GERAL - 2026 - ANO LETIVO',
-    usuario_rodape: $('sUsuario').value.trim(),
-  };
-  try {
-    await setDoc(doc(db, 'settings', 'geral'), payload, { merge: true });
-    delete $('printTitulo').dataset.edited;
-    delete $('printUsuario').dataset.edited;
-    $('settingsModal').hidden = true;
-    showToast('Configurações salvas!');
-  } catch (err) {
-    showToast('Erro ao salvar configurações: ' + err.message, 'error');
-  }
-}
-
-function downloadJsonBackup() {
-  const payload = {
-    exported_at: new Date().toISOString(),
-    settings: state.settings,
-    employees: sortEmployeeList(state.allEmployees, 'nome_asc').map(({ id: _id, ...rest }) => rest),
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `carometro_backup_${new Date().toISOString().slice(0, 10)}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
-
-async function handleRestoreBackup(file) {
-  if (!file) return;
-  try {
-    const text = await file.text();
-    const json = JSON.parse(text);
-    if (!json || !Array.isArray(json.employees)) {
-      throw new Error('Arquivo JSON inválido.');
-    }
-
-    // Build lookup of existing records by (codigo + nome) to avoid duplicates on import
-    const existingMap = new Map();
-    for (const emp of state.allEmployees) {
-      const key = `${(emp.codigo || '').trim()}|${(emp.nome || '').trim().toLowerCase()}`;
-      existingMap.set(key, emp.id);
-    }
-
-    let imported = 0;
-    const batchSize = 150;
-    for (let i = 0; i < json.employees.length; i += batchSize) {
-      const chunk = json.employees.slice(i, i + batchSize);
-      const batch = writeBatch(db);
-      for (const raw of chunk) {
-        const record = {
-          codigo: String(raw.codigo ?? '').trim(),
-          nome: String(raw.nome ?? '').trim(),
-          cpf: String(raw.cpf ?? '').trim(),
-          endereco: String(raw.endereco ?? '').trim(),
-          data_nascimento: String(raw.data_nascimento ?? '').trim(),
-          sexo: String(raw.sexo ?? '').trim(),
-          email: String(raw.email ?? '').trim(),
-          rg: String(raw.rg ?? '').trim(),
-          emitido_por: String(raw.emitido_por ?? '').trim(),
-          data_emissao: String(raw.data_emissao ?? '').trim(),
-          data_contratacao: String(raw.data_contratacao ?? '').trim(),
-          data_demissao: String(raw.data_demissao ?? '').trim(),
-          tem_assinatura_digitalizada: raw.tem_assinatura_digitalizada ? 1 : 0,
-          telefones: String(raw.telefones ?? '').trim(),
-          tipo: String(raw.tipo || 'Funcionário').trim(),
-          cargo: String(raw.cargo ?? '').trim(),
-          foto_data: String(raw.foto_data ?? '').trim(),
-          updated_at_ms: Date.now(),
-        };
-        if (!record.nome) continue;
-
-        const key = `${record.codigo}|${record.nome.toLowerCase()}`;
-        const existingId = existingMap.get(key);
-        if (existingId) {
-          batch.set(doc(db, 'employees', existingId), record, { merge: true });
-        } else {
-          record.created_at_ms = Date.now();
-          batch.set(doc(collection(db, 'employees')), record);
-        }
-        imported++;
-      }
-      await batch.commit();
-    }
-
-    if (json.settings && typeof json.settings === 'object') {
-      await setDoc(
-        doc(db, 'settings', 'geral'),
-        {
-          escola_nome: json.settings.escola_nome || state.settings.escola_nome,
-          titulo_relatorio: json.settings.titulo_relatorio || state.settings.titulo_relatorio,
-          usuario_rodape: json.settings.usuario_rodape || state.settings.usuario_rodape,
-        },
-        { merge: true }
-      );
-    }
-
-    $('restoreFileInput').value = '';
-    $('settingsModal').hidden = true;
-    showToast(`Importação concluída: ${imported} registro(s) sincronizado(s)!`);
-  } catch (err) {
-    showToast('Erro ao importar: ' + err.message, 'error');
-  }
-}
-
-// =========================================================
-// Event Listeners
-// =========================================================
-function bindEvents() {
-  // Auth
-  $('btnGoogleLogin').addEventListener('click', async () => {
-    showAuthError('');
+  async function downloadPdf(overrideScope = null, specificIds = null, inline = false) {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const list = getEmployeesForPrint(overrideScope, specificIds);
+      showToast('Gerando PDF...');
+      const blob = await generateCarometroPdfBlob(list, {
+        escola_nome: state.settings.escola_nome || 'Escola Adventista de Ibiúna',
+        titulo_relatorio: $('printTitulo').value || state.settings.titulo_relatorio,
+        usuario_rodape: $('printUsuario').value || state.settings.usuario_rodape,
+        data_impressao: $('printData').value || formatTodayBR(),
+        titulo_relatorio: $('printTitulo').value.trim() || state.settings.titulo_relatorio,
+        usuario_rodape: $('printUsuario').value.trim(),
+        data_impressao: $('printData').value.trim(),
+      });
+      const url = URL.createObjectURL(blob);
+      if (inline) {
+        window.open(url, '_blank');
+      } else {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `carometro_${new Date().toISOString().slice(0, 10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      }
     } catch (err) {
-      showAuthError('Não foi possível entrar com o Google: ' + (err.message || err.code));
+      showToast('Erro ao gerar PDF: ' + err.message, 'error');
     }
-  });
+  }
 
-  $('emailLoginForm').addEventListener('submit', async (e) => {
+  // =========================================================
+  // Settings, Backup & Import
+  // =========================================================
+  function openSettingsModal() {
+    $('sEscola').value = state.settings.escola_nome || '';
+    $('sTitulo').value = state.settings.titulo_relatorio || '';
+    $('sUsuario').value = state.settings.usuario_rodape || '';
+    renderAdminNotifications();
+    $('settingsModal').hidden = false;
+  }
+
+  async function saveSettings(e) {
     e.preventDefault();
-    showAuthError('');
-    const email = $('loginEmail').value.trim();
-    const pass = $('loginPassword').value;
+    const payload = {
+      escola_nome: $('sEscola').value.trim() || 'Escola Adventista de Ibiúna',
+      titulo_relatorio: $('sTitulo').value.trim() || 'CARÔMETRO GERAL - 2026 - ANO LETIVO',
+      usuario_rodape: $('sUsuario').value.trim(),
+    };
     try {
-      await signInWithEmailAndPassword(auth, email, pass);
-    } catch {
-      showAuthError('E-mail ou senha inválidos.');
+      await setDoc(doc(db, 'settings', 'geral'), payload, { merge: true });
+      delete $('printTitulo').dataset.edited;
+      delete $('printUsuario').dataset.edited;
+      $('settingsModal').hidden = true;
+      showToast('Configurações salvas!');
+    } catch (err) {
+      showToast('Erro ao salvar configurações: ' + err.message, 'error');
     }
-  });
+  }
 
-  $('btnLogout').addEventListener('click', () => signOut(auth));
-  $('btnPendingLogout').addEventListener('click', () => signOut(auth));
-  $('btnRetryAuthCheck').addEventListener('click', () => {
-    if (auth.currentUser) handleUserSignedIn(auth.currentUser);
-  });
+  function downloadJsonBackup() {
+    const payload = {
+      exported_at: new Date().toISOString(),
+      settings: state.settings,
+      employees: sortEmployeeList(state.allEmployees, 'nome_asc').map(({ id: _id, ...rest }) => rest),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `carometro_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
 
-  // Tabs
-  document.querySelectorAll('.tab').forEach((btn) => {
-    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-  });
-
-  // Topbar buttons
-  $('btnNewEmployee').addEventListener('click', startNewEmployeeForm);
-  $('btnPrintPreview').addEventListener('click', () => switchTab('impressao'));
-  $('btnDownloadPdf').addEventListener('click', () => {
-    const scope = state.selectedIds.size > 0 ? 'selected' : 'filtered';
-    downloadPdf(scope);
-  });
-  $('btnSettings').addEventListener('click', openSettingsModal);
-
-  // Filters
-  let searchTimeout = null;
-  $('searchInput').addEventListener('input', (e) => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-      state.filters.q = e.target.value;
-      applyFiltersAndRender();
-    }, 120);
-  });
-
-  $('tipoFilter').querySelectorAll('.seg-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      $('tipoFilter').querySelectorAll('.seg-btn').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.filters.tipo = btn.dataset.value;
-      applyFiltersAndRender();
-    });
-  });
-
-  $('statusFilter').addEventListener('change', (e) => {
-    state.filters.status = e.target.value;
-    applyFiltersAndRender();
-  });
-
-  $('assinaturaFilter').addEventListener('change', (e) => {
-    state.filters.assinatura = e.target.value;
-    applyFiltersAndRender();
-  });
-
-  $('orderSelect').addEventListener('change', (e) => {
-    state.filters.order = e.target.value;
-    applyFiltersAndRender();
-  });
-
-  $('btnResetFilters').addEventListener('click', () => {
-    $('searchInput').value = '';
-    state.filters = { q: '', tipo: 'Todos', status: '', assinatura: '', order: 'nome_asc' };
-    $('statusFilter').value = '';
-    $('assinaturaFilter').value = '';
-    $('orderSelect').value = 'nome_asc';
-    $('tipoFilter').querySelectorAll('.seg-btn').forEach((b) => {
-      b.classList.toggle('active', b.dataset.value === 'Todos');
-    });
-    applyFiltersAndRender();
-  });
-
-  // Selection
-  $('selectAllCheckbox').addEventListener('change', (e) => {
-    if (e.target.checked) {
-      state.employees.forEach((emp) => state.selectedIds.add(emp.id));
-    } else {
-      state.selectedIds.clear();
-    }
-    renderTable();
-  });
-
-  $('btnClearSelection').addEventListener('click', () => {
-    state.selectedIds.clear();
-    renderTable();
-  });
-
-  $('btnPrintFiltered').addEventListener('click', () => {
-    const scope = state.selectedIds.size > 0 ? 'selected' : 'filtered';
-    triggerBrowserPrint(scope);
-  });
-
-  $('btnPdfFiltered').addEventListener('click', () => {
-    const scope = state.selectedIds.size > 0 ? 'selected' : 'filtered';
-    downloadPdf(scope);
-  });
-
-  // Navigator
-  $('navFirst').addEventListener('click', () => openRecordInFicha(0));
-  $('navPrev').addEventListener('click', () => openRecordInFicha(state.currentIndex - 1));
-  $('navNext').addEventListener('click', () => openRecordInFicha(state.currentIndex + 1));
-  $('navLast').addEventListener('click', () => openRecordInFicha(state.employees.length - 1));
-
-  document.addEventListener('keydown', (e) => {
-    if (state.activeTab === 'ficha' && e.altKey) {
-      if (e.key === 'ArrowLeft' && state.currentIndex > 0) {
-        e.preventDefault();
-        openRecordInFicha(state.currentIndex - 1);
-      } else if (e.key === 'ArrowRight' && state.currentIndex < state.employees.length - 1) {
-        e.preventDefault();
-        openRecordInFicha(state.currentIndex + 1);
+  async function handleRestoreBackup(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      if (!json || !Array.isArray(json.employees)) {
+        throw new Error('Arquivo JSON inválido.');
       }
+
+      // Build lookup of existing records by (codigo + nome) to avoid duplicates on import
+      const existingMap = new Map();
+      for (const emp of state.allEmployees) {
+        const key = `${(emp.codigo || '').trim()}|${(emp.nome || '').trim().toLowerCase()}`;
+        existingMap.set(key, emp.id);
+      }
+
+      let imported = 0;
+      const batchSize = 150;
+      for (let i = 0; i < json.employees.length; i += batchSize) {
+        const chunk = json.employees.slice(i, i + batchSize);
+        const batch = writeBatch(db);
+        for (const raw of chunk) {
+          const record = {
+            codigo: String(raw.codigo ?? '').trim(),
+            nome: String(raw.nome ?? '').trim(),
+            cpf: String(raw.cpf ?? '').trim(),
+            endereco: String(raw.endereco ?? '').trim(),
+            data_nascimento: String(raw.data_nascimento ?? '').trim(),
+            sexo: String(raw.sexo ?? '').trim(),
+            email: String(raw.email ?? '').trim(),
+            rg: String(raw.rg ?? '').trim(),
+            emitido_por: String(raw.emitido_por ?? '').trim(),
+            data_emissao: String(raw.data_emissao ?? '').trim(),
+            data_contratacao: String(raw.data_contratacao ?? '').trim(),
+            data_demissao: String(raw.data_demissao ?? '').trim(),
+            tem_assinatura_digitalizada: raw.tem_assinatura_digitalizada ? 1 : 0,
+            telefones: String(raw.telefones ?? '').trim(),
+            tipo: String(raw.tipo || 'Funcionário').trim(),
+            cargo: String(raw.cargo ?? '').trim(),
+            foto_data: String(raw.foto_data ?? '').trim(),
+            updated_at_ms: Date.now(),
+          };
+          if (!record.nome) continue;
+
+          const key = `${record.codigo}|${record.nome.toLowerCase()}`;
+          const existingId = existingMap.get(key);
+          if (existingId) {
+            batch.set(doc(db, 'employees', existingId), record, { merge: true });
+          } else {
+            record.created_at_ms = Date.now();
+            batch.set(doc(collection(db, 'employees')), record);
+          }
+          imported++;
+        }
+        await batch.commit();
+      }
+
+      if (json.settings && typeof json.settings === 'object') {
+        await setDoc(
+          doc(db, 'settings', 'geral'),
+          {
+            escola_nome: json.settings.escola_nome || state.settings.escola_nome,
+            titulo_relatorio: json.settings.titulo_relatorio || state.settings.titulo_relatorio,
+            usuario_rodape: json.settings.usuario_rodape || state.settings.usuario_rodape,
+          },
+          { merge: true }
+        );
+      }
+
+      $('restoreFileInput').value = '';
+      $('settingsModal').hidden = true;
+      showToast(`Importação concluída: ${imported} registro(s) sincronizado(s)!`);
+    } catch (err) {
+      showToast('Erro ao importar: ' + err.message, 'error');
     }
-  });
+  }
 
-  $('btnFichaNew').addEventListener('click', startNewEmployeeForm);
-  $('btnFichaDelete').addEventListener('click', () => {
-    const emp = state.employees[state.currentIndex];
-    if (emp) askDeleteEmployee(emp.id);
-  });
-  $('btnFichaPrintOne').addEventListener('click', () => {
-    const emp = state.employees[state.currentIndex];
-    if (emp) triggerBrowserPrint(null, [emp.id]);
-  });
-  $('btnFichaPdfOne').addEventListener('click', () => {
-    const emp = state.employees[state.currentIndex];
-    if (emp) downloadPdf(null, [emp.id]);
-  });
-  $('btnCancelForm').addEventListener('click', () => switchTab('consulta'));
+  // =========================================================
+  // Event Listeners
+  // =========================================================
+  function bindEvents() {
+    // Auth
+    $('btnGoogleLogin').addEventListener('click', async () => {
+      showAuthError('');
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (err) {
+        showAuthError('Não foi possível entrar com o Google: ' + (err.message || err.code));
+      }
+    });
 
-  // Form inputs & masks
-  $('fCpf').addEventListener('input', (e) => {
-    e.target.value = maskCpf(e.target.value);
-    renderLiveCardPreview();
-  });
-  ['fNascimento', 'fDataEmissao', 'fDataContratacao', 'fDataDemissao'].forEach((id) => {
-    $(id).addEventListener('input', (e) => {
-      e.target.value = maskDate(e.target.value);
+    $('emailLoginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      showAuthError('');
+      const email = $('loginEmail').value.trim();
+      const pass = $('loginPassword').value;
+      try {
+        await signInWithEmailAndPassword(auth, email, pass);
+      } catch {
+        showAuthError('E-mail ou senha inválidos.');
+      }
+    });
+
+    $('btnLogout').addEventListener('click', () => signOut(auth));
+    $('btnPendingLogout').addEventListener('click', () => signOut(auth));
+    $('btnRetryAuthCheck').addEventListener('click', () => {
+      if (auth.currentUser) handleUserSignedIn(auth.currentUser);
+    });
+
+    // Tabs
+    document.querySelectorAll('.tab').forEach((btn) => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    // Topbar buttons
+    $('btnNewEmployee').addEventListener('click', startNewEmployeeForm);
+    $('btnPrintPreview').addEventListener('click', () => switchTab('impressao'));
+    $('btnDownloadPdf').addEventListener('click', () => {
+      const scope = state.selectedIds.size > 0 ? 'selected' : 'filtered';
+      downloadPdf(scope);
+    });
+    $('btnSettings').addEventListener('click', openSettingsModal);
+
+    // Filters
+    let searchTimeout = null;
+    $('searchInput').addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        state.filters.q = e.target.value;
+        applyFiltersAndRender();
+      }, 120);
+    });
+
+    $('tipoFilter').querySelectorAll('.seg-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        $('tipoFilter').querySelectorAll('.seg-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.filters.tipo = btn.dataset.value;
+        applyFiltersAndRender();
+      });
+    });
+
+    $('statusFilter').addEventListener('change', (e) => {
+      state.filters.status = e.target.value;
+      applyFiltersAndRender();
+    });
+
+    $('assinaturaFilter').addEventListener('change', (e) => {
+      state.filters.assinatura = e.target.value;
+      applyFiltersAndRender();
+    });
+
+    $('orderSelect').addEventListener('change', (e) => {
+      state.filters.order = e.target.value;
+      applyFiltersAndRender();
+    });
+
+    $('btnResetFilters').addEventListener('click', () => {
+      $('searchInput').value = '';
+      state.filters = { q: '', tipo: 'Todos', status: '', assinatura: '', order: 'nome_asc' };
+      $('statusFilter').value = '';
+      $('assinaturaFilter').value = '';
+      $('orderSelect').value = 'nome_asc';
+      $('tipoFilter').querySelectorAll('.seg-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.value === 'Todos');
+      });
+      applyFiltersAndRender();
+    });
+
+    // Selection
+    $('selectAllCheckbox').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        state.employees.forEach((emp) => state.selectedIds.add(emp.id));
+      } else {
+        state.selectedIds.clear();
+      }
+      renderTable();
+    });
+
+    $('btnClearSelection').addEventListener('click', () => {
+      state.selectedIds.clear();
+      renderTable();
+    });
+
+    $('btnPrintFiltered').addEventListener('click', () => {
+      const scope = state.selectedIds.size > 0 ? 'selected' : 'filtered';
+      triggerBrowserPrint(scope);
+    });
+
+    $('btnPdfFiltered').addEventListener('click', () => {
+      const scope = state.selectedIds.size > 0 ? 'selected' : 'filtered';
+      downloadPdf(scope);
+    });
+
+    // Navigator
+    $('navFirst').addEventListener('click', () => openRecordInFicha(0));
+    $('navPrev').addEventListener('click', () => openRecordInFicha(state.currentIndex - 1));
+    $('navNext').addEventListener('click', () => openRecordInFicha(state.currentIndex + 1));
+    $('navLast').addEventListener('click', () => openRecordInFicha(state.employees.length - 1));
+
+    document.addEventListener('keydown', (e) => {
+      if (state.activeTab === 'ficha' && e.altKey) {
+        if (e.key === 'ArrowLeft' && state.currentIndex > 0) {
+          e.preventDefault();
+          openRecordInFicha(state.currentIndex - 1);
+        } else if (e.key === 'ArrowRight' && state.currentIndex < state.employees.length - 1) {
+          e.preventDefault();
+          openRecordInFicha(state.currentIndex + 1);
+        }
+      }
+    });
+
+    $('btnFichaNew').addEventListener('click', startNewEmployeeForm);
+    $('btnFichaDelete').addEventListener('click', () => {
+      const emp = state.employees[state.currentIndex];
+      if (emp) askDeleteEmployee(emp.id);
+    });
+    $('btnFichaPrintOne').addEventListener('click', () => {
+      const emp = state.employees[state.currentIndex];
+      if (emp) triggerBrowserPrint(null, [emp.id]);
+    });
+    $('btnFichaPdfOne').addEventListener('click', () => {
+      const emp = state.employees[state.currentIndex];
+      if (emp) downloadPdf(null, [emp.id]);
+    });
+    $('btnCancelForm').addEventListener('click', () => switchTab('consulta'));
+
+    // Form inputs & masks
+    $('fCpf').addEventListener('input', (e) => {
+      e.target.value = maskCpf(e.target.value);
       renderLiveCardPreview();
     });
-  });
-  ['fCodigo', 'fNome', 'fTipo', 'fEmail', 'fEndRua', 'fEndNumero', 'fEndComplemento', 'fEndBairro', 'fEndCidade', 'fEndUf', 'fSexo', 'fRg', 'fEmitidoPor'].forEach(
-    (id) => {
-      $(id).addEventListener('input', () => {
-        if (id === 'fEndUf') $(id).value = $(id).value.toUpperCase();
+    ['fNascimento', 'fDataEmissao', 'fDataContratacao', 'fDataDemissao'].forEach((id) => {
+      $(id).addEventListener('input', (e) => {
+        e.target.value = maskDate(e.target.value);
         renderLiveCardPreview();
       });
-      $(id).addEventListener('change', renderLiveCardPreview);
-    }
-  );
-  $('fEndCep').addEventListener('input', (e) => {
-    e.target.value = maskCep(e.target.value);
-    renderLiveCardPreview();
-    lookupCepIfComplete(e.target.value);
-  });
-  $('fCargoSelect').addEventListener('change', (e) => {
-    const isOther = e.target.value === CARGO_OTHER_VALUE;
-    $('fCargoCustom').hidden = !isOther;
-    if (isOther) $('fCargoCustom').focus();
-    renderLiveCardPreview();
-  });
-  $('fCargoCustom').addEventListener('input', renderLiveCardPreview);
-  $('btnAddPhone').addEventListener('click', () => {
-    phoneRows.push({ tipo: 'WhatsApp', numero: '' });
-    renderPhoneRows();
-    const inputs = $('phoneRowsContainer').querySelectorAll('.phone-number-input');
-    if (inputs.length) inputs[inputs.length - 1].focus();
-  });
-  $('fAssinatura').addEventListener('change', renderLiveCardPreview);
+    });
+    ['fCodigo', 'fNome', 'fTipo', 'fEmail', 'fEndereco', 'fSexo', 'fRg', 'fEmitidoPor'].forEach(
+      ['fCodigo', 'fNome', 'fTipo', 'fEmail', 'fEndRua', 'fEndNumero', 'fEndComplemento', 'fEndBairro', 'fEndCidade', 'fEndUf', 'fSexo', 'fRg', 'fEmitidoPor'].forEach(
+        (id) => {
+          $(id).addEventListener('input', renderLiveCardPreview);
+          $(id).addEventListener('input', () => {
+            if (id === 'fEndUf') $(id).value = $(id).value.toUpperCase();
+            renderLiveCardPreview();
+          });
+          $(id).addEventListener('change', renderLiveCardPreview);
+        }
+      );
+    $('fEndCep').addEventListener('input', (e) => {
+      e.target.value = maskCep(e.target.value);
+      renderLiveCardPreview();
+      lookupCepIfComplete(e.target.value);
+    });
+    $('fCargoSelect').addEventListener('change', (e) => {
+      const isOther = e.target.value === CARGO_OTHER_VALUE;
+      $('fCargoCustom').hidden = !isOther;
+      if (isOther) $('fCargoCustom').focus();
+      renderLiveCardPreview();
+    });
+    $('fCargoCustom').addEventListener('input', renderLiveCardPreview);
+    $('btnAddPhone').addEventListener('click', () => {
+      phoneRows.push({ tipo: 'WhatsApp', numero: '' });
+      renderPhoneRows();
+      const inputs = $('phoneRowsContainer').querySelectorAll('.phone-number-input');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    });
+    $('fAssinatura').addEventListener('change', renderLiveCardPreview);
 
-  // Photo drag/drop/click & 3x4 cropper
-  const dropZone = $('photoDropZone');
-  dropZone.addEventListener('click', () => {
-    if (!$('photoPreviewImg').hidden) {
-      openCurrentPhotoInCropper();
-    } else {
-      $('photoInput').click();
-    }
-  });
-  $('btnChoosePhoto').addEventListener('click', () => $('photoInput').click());
-  $('btnAdjustPhoto').addEventListener('click', openCurrentPhotoInCropper);
-  $('photoInput').addEventListener('change', (e) => handleSelectedPhotoFile(e.target.files[0]));
-  dropZone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropZone.classList.add('dragover');
-  });
-  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-  dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('dragover');
-    if (e.dataTransfer.files?.[0]) handleSelectedPhotoFile(e.dataTransfer.files[0]);
-  });
-  $('btnRemovePhoto').addEventListener('click', () => {
-    clearPendingPhotoState();
-    state.removePhotoFlag = true;
-    $('photoInput').value = '';
-    updatePhotoEditorUI('');
-    renderLiveCardPreview();
-  });
-
-  // 3x4 Cropper pointer & zoom controls
-  const cropViewport = $('cropViewport');
-  cropViewport.addEventListener('pointerdown', (e) => {
-    if (!cropState.img) return;
-    cropState.dragging = true;
-    cropState.startClientX = e.clientX;
-    cropState.startClientY = e.clientY;
-    cropState.startOffsetX = cropState.offsetX;
-    cropState.startOffsetY = cropState.offsetY;
-    cropViewport.classList.add('dragging');
-    cropViewport.setPointerCapture(e.pointerId);
-  });
-  cropViewport.addEventListener('pointermove', (e) => {
-    if (!cropState.dragging) return;
-    const rect = cropViewport.getBoundingClientRect();
-    const canvas = $('cropCanvas');
-    const factorX = canvas.width / rect.width;
-    const factorY = canvas.height / rect.height;
-    cropState.offsetX = cropState.startOffsetX + (e.clientX - cropState.startClientX) * factorX;
-    cropState.offsetY = cropState.startOffsetY + (e.clientY - cropState.startClientY) * factorY;
-    renderCropCanvas();
-  });
-  const endCropDrag = () => {
-    cropState.dragging = false;
-    cropViewport.classList.remove('dragging');
-  };
-  cropViewport.addEventListener('pointerup', endCropDrag);
-  cropViewport.addEventListener('pointercancel', endCropDrag);
-  cropViewport.addEventListener(
-    'wheel',
-    (e) => {
+    // Photo drag/drop/click & 3x4 cropper
+    const dropZone = $('photoDropZone');
+    dropZone.addEventListener('click', () => {
+      if (!$('photoPreviewImg').hidden) {
+        openCurrentPhotoInCropper();
+      } else {
+        $('photoInput').click();
+      }
+    });
+    $('btnChoosePhoto').addEventListener('click', () => $('photoInput').click());
+    $('btnAdjustPhoto').addEventListener('click', openCurrentPhotoInCropper);
+    $('photoInput').addEventListener('change', (e) => handleSelectedPhotoFile(e.target.files[0]));
+    dropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
-      const currentFactor = cropState.scale / cropState.coverScale;
-      const step = e.deltaY < 0 ? 0.08 : -0.08;
-      setCropZoomFactor(currentFactor + step);
-    },
-    { passive: false }
-  );
+      dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files?.[0]) handleSelectedPhotoFile(e.dataTransfer.files[0]);
+    });
+    $('btnRemovePhoto').addEventListener('click', () => {
+      clearPendingPhotoState();
+      state.removePhotoFlag = true;
+      $('photoInput').value = '';
+      updatePhotoEditorUI('');
+      renderLiveCardPreview();
+    });
 
-  $('cropZoomSlider').addEventListener('input', (e) => {
-    setCropZoomFactor(parseFloat(e.target.value));
-  });
-  $('btnZoomIn').addEventListener('click', () => {
-    setCropZoomFactor(cropState.scale / cropState.coverScale + 0.1);
-  });
-  $('btnZoomOut').addEventListener('click', () => {
-    setCropZoomFactor(cropState.scale / cropState.coverScale - 0.1);
-  });
-  $('btnCropReset').addEventListener('click', resetCropPosition);
-  $('btnApplyCrop').addEventListener('click', applyPhotoCrop);
-  $('btnCancelCrop').addEventListener('click', () => closePhotoCropper(false));
-  $('btnCloseCrop').addEventListener('click', () => closePhotoCropper(false));
+    // 3x4 Cropper pointer & zoom controls
+    const cropViewport = $('cropViewport');
+    cropViewport.addEventListener('pointerdown', (e) => {
+      if (!cropState.img) return;
+      cropState.dragging = true;
+      cropState.startClientX = e.clientX;
+      cropState.startClientY = e.clientY;
+      cropState.startOffsetX = cropState.offsetX;
+      cropState.startOffsetY = cropState.offsetY;
+      cropViewport.classList.add('dragging');
+      cropViewport.setPointerCapture(e.pointerId);
+    });
+    cropViewport.addEventListener('pointermove', (e) => {
+      if (!cropState.dragging) return;
+      const rect = cropViewport.getBoundingClientRect();
+      const canvas = $('cropCanvas');
+      const factorX = canvas.width / rect.width;
+      const factorY = canvas.height / rect.height;
+      cropState.offsetX = cropState.startOffsetX + (e.clientX - cropState.startClientX) * factorX;
+      cropState.offsetY = cropState.startOffsetY + (e.clientY - cropState.startClientY) * factorY;
+      renderCropCanvas();
+    });
+    const endCropDrag = () => {
+      cropState.dragging = false;
+      cropViewport.classList.remove('dragging');
+    };
+    cropViewport.addEventListener('pointerup', endCropDrag);
+    cropViewport.addEventListener('pointercancel', endCropDrag);
+    cropViewport.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault();
+        const currentFactor = cropState.scale / cropState.coverScale;
+        const step = e.deltaY < 0 ? 0.08 : -0.08;
+        setCropZoomFactor(currentFactor + step);
+      },
+      { passive: false }
+    );
 
-  $('employeeForm').addEventListener('submit', handleSaveEmployee);
+    $('cropZoomSlider').addEventListener('input', (e) => {
+      setCropZoomFactor(parseFloat(e.target.value));
+    });
+    $('btnZoomIn').addEventListener('click', () => {
+      setCropZoomFactor(cropState.scale / cropState.coverScale + 0.1);
+    });
+    $('btnZoomOut').addEventListener('click', () => {
+      setCropZoomFactor(cropState.scale / cropState.coverScale - 0.1);
+    });
+    $('btnCropReset').addEventListener('click', resetCropPosition);
+    $('btnApplyCrop').addEventListener('click', applyPhotoCrop);
+    $('btnCancelCrop').addEventListener('click', () => closePhotoCropper(false));
+    $('btnCloseCrop').addEventListener('click', () => closePhotoCropper(false));
 
-  // Print preview controls
-  $('printTituloPreset').addEventListener('change', (e) => {
-    if (e.target.value) {
-      $('printTitulo').value = e.target.value;
+    $('employeeForm').addEventListener('submit', handleSaveEmployee);
+
+    // Print preview controls
+    $('printTituloPreset').addEventListener('change', (e) => {
+      if (e.target.value) {
+        $('printTitulo').value = e.target.value;
+        $('printTitulo').dataset.edited = '1';
+        e.target.value = '';
+        renderPrintPreview();
+      }
+    });
+    $('printTitulo').addEventListener('input', () => {
       $('printTitulo').dataset.edited = '1';
-      e.target.value = '';
       renderPrintPreview();
-    }
-  });
-  $('printTitulo').addEventListener('input', () => {
-    $('printTitulo').dataset.edited = '1';
-    renderPrintPreview();
-  });
-  $('printUsuario').addEventListener('input', () => {
-    $('printUsuario').dataset.edited = '1';
-    renderPrintPreview();
-  });
-  $('printData').addEventListener('input', () => {
-    $('printData').dataset.edited = '1';
-    renderPrintPreview();
-  });
-  $('printScope').addEventListener('change', renderPrintPreview);
-  $('btnPrintBrowser').addEventListener('click', () => triggerBrowserPrint());
-  $('btnOpenPdfPrint').addEventListener('click', () => downloadPdf(null, null, true));
-  $('btnDownloadPdfFromPreview').addEventListener('click', () => downloadPdf(null, null, false));
+    });
+    $('printUsuario').addEventListener('input', () => {
+      $('printUsuario').dataset.edited = '1';
+      renderPrintPreview();
+    });
+    ['printData', 'printScope'].forEach((id) => {
+      $(id).addEventListener('input', renderPrintPreview);
+      $(id).addEventListener('change', renderPrintPreview);
+      $('printData').addEventListener('input', () => {
+        $('printData').dataset.edited = '1';
+        renderPrintPreview();
+      });
+      $('printScope').addEventListener('change', renderPrintPreview);
+      $('btnPrintBrowser').addEventListener('click', () => triggerBrowserPrint());
+      $('btnOpenPdfPrint').addEventListener('click', () => downloadPdf(null, null, true));
+      $('btnDownloadPdfFromPreview').addEventListener('click', () => downloadPdf(null, null, false));
 
-  // Modals
-  $('btnCloseSettings').addEventListener('click', () => ($('settingsModal').hidden = true));
-  $('settingsForm').addEventListener('submit', saveSettings);
-  $('btnDownloadJsonBackup').addEventListener('click', downloadJsonBackup);
-  $('restoreFileInput').addEventListener('change', (e) => handleRestoreBackup(e.target.files[0]));
-  $('btnCloseConfirm').addEventListener('click', () => ($('confirmModal').hidden = true));
-  $('btnCancelDelete').addEventListener('click', () => ($('confirmModal').hidden = true));
-  $('btnConfirmDelete').addEventListener('click', confirmDeleteEmployee);
-}
+      // Modals
+      $('btnCloseSettings').addEventListener('click', () => ($('settingsModal').hidden = true));
+      $('settingsForm').addEventListener('submit', saveSettings);
+      $('btnDownloadJsonBackup').addEventListener('click', downloadJsonBackup);
+      $('restoreFileInput').addEventListener('change', (e) => handleRestoreBackup(e.target.files[0]));
+      $('btnCloseConfirm').addEventListener('click', () => ($('confirmModal').hidden = true));
+      $('btnCancelDelete').addEventListener('click', () => ($('confirmModal').hidden = true));
+      $('btnConfirmDelete').addEventListener('click', confirmDeleteEmployee);
+    }
 
 // Keep sticky offset aligned with actual header height
 const stickyChromeEl = $('stickyChrome');
-if (stickyChromeEl && typeof ResizeObserver !== 'undefined') {
-  const syncChromeHeight = () => {
-    document.documentElement.style.setProperty('--chrome-h', `${stickyChromeEl.offsetHeight}px`);
-  };
-  new ResizeObserver(syncChromeHeight).observe(stickyChromeEl);
-  syncChromeHeight();
-}
+    if (stickyChromeEl && typeof ResizeObserver !== 'undefined') {
+      const syncChromeHeight = () => {
+        document.documentElement.style.setProperty('--chrome-h', `${stickyChromeEl.offsetHeight}px`);
+      };
+      new ResizeObserver(syncChromeHeight).observe(stickyChromeEl);
+      syncChromeHeight();
+    }
 
-// Init
-populateCargoSelect();
-renderPhoneRows();
-bindEvents();
-onAuthStateChanged(auth, (user) => {
-  if (!user) {
-    clearListeners();
-    state.user = null;
-    state.isAdmin = false;
-    showScreen('auth');
-  } else {
-    handleUserSignedIn(user);
-  }
-});
+    // Init
+    populateCargoSelect();
+    renderPhoneRows();
+    bindEvents();
+    onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        clearListeners();
+        state.user = null;
+        state.isAdmin = false;
+        showScreen('auth');
+      } else {
+        handleUserSignedIn(user);
+      }
+    });
