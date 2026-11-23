@@ -31,6 +31,15 @@ const googleProvider = new GoogleAuthProvider();
 
 const ADMIN_SET = new Set(ADMIN_EMAILS.map((e) => e.toLowerCase()));
 
+const DEFAULT_SCHOOL_NAME = 'Colégio Adventista de Ibiúna';
+const cachedSchoolName = (() => {
+  try {
+    return localStorage.getItem('carometro_escola_nome') || DEFAULT_SCHOOL_NAME;
+  } catch {
+    return DEFAULT_SCHOOL_NAME;
+  }
+})();
+
 const state = {
   user: null,
   isAdmin: false,
@@ -38,7 +47,7 @@ const state = {
   employees: [],
   stats: { total: 0, professores: 0, funcionarios: 0, ativos: 0, demitidos: 0 },
   settings: {
-    escola_nome: 'Colégio Adventista de Ibiúna',
+    escola_nome: cachedSchoolName,
     titulo_relatorio: 'CARÔMETRO GERAL - 2026 - ANO LETIVO',
     usuario_rodape: 'daniele.moraes@adm.educadventista.org',
   },
@@ -634,10 +643,32 @@ async function showPendingApprovalScreen(user, emailLower) {
   state.unsubs.push(unsub);
 }
 
+function applySchoolNameEverywhere(name) {
+  const clean = String(name || '').trim() || DEFAULT_SCHOOL_NAME;
+  state.settings.escola_nome = clean;
+  $('headerSchoolName').textContent = clean;
+  if ($('authSchoolSub')) {
+    $('authSchoolSub').textContent = `${clean} — Acesso Restrito`;
+  }
+  document.title = `Carômetro Geral — ${clean}`;
+  if (!$('settingsModal').hidden) {
+    $('sEscola').value = clean;
+  }
+  try {
+    localStorage.setItem('carometro_escola_nome', clean);
+  } catch {
+    // ignore storage errors
+  }
+  if (state.activeTab === 'impressao') {
+    renderPrintPreview();
+  }
+}
+
 async function enterMainApp(user, isAdmin) {
   showScreen('app');
   $('userBadge').textContent = user.email || user.displayName || 'Usuário';
   $('adminAccessSection').hidden = !isAdmin;
+  applySchoolNameEverywhere(state.settings.escola_nome);
   if (!$('printData').dataset.edited) {
     $('printData').value = formatTodayBR();
   }
@@ -650,11 +681,10 @@ async function enterMainApp(user, isAdmin) {
     if (snap.exists()) {
       state.settings = { ...state.settings, ...snap.data() };
     }
-    $('headerSchoolName').textContent = state.settings.escola_nome || 'Escola Adventista de Ibiúna';
+    applySchoolNameEverywhere(state.settings.escola_nome);
     if (!$('printTitulo').dataset.edited) {
       $('printTitulo').value = state.settings.titulo_relatorio || 'CARÔMETRO GERAL - 2026 - ANO LETIVO';
     }
-    if (state.activeTab === 'impressao') renderPrintPreview();
   });
   state.unsubs.push(unsubSettings);
 
@@ -1390,7 +1420,7 @@ function estimateHtmlCardHeightPt(emp) {
 }
 
 function buildA4PagesHtml(employees) {
-  const escola = state.settings.escola_nome || 'Escola Adventista de Ibiúna';
+  const escola = state.settings.escola_nome || DEFAULT_SCHOOL_NAME;
   const titulo = $('printTitulo').value.trim() || state.settings.titulo_relatorio;
   const usuario = $('printUsuario').value.trim();
   const dataStr = $('printData').value.trim();
@@ -1453,7 +1483,7 @@ async function downloadPdf(overrideScope = null, specificIds = null, inline = fa
     const list = getEmployeesForPrint(overrideScope, specificIds);
     showToast('Gerando PDF...');
     const blob = await generateCarometroPdfBlob(list, {
-      escola_nome: state.settings.escola_nome || 'Escola Adventista de Ibiúna',
+      escola_nome: state.settings.escola_nome || DEFAULT_SCHOOL_NAME,
       titulo_relatorio: $('printTitulo').value.trim() || state.settings.titulo_relatorio,
       usuario_rodape: $('printUsuario').value.trim(),
       data_impressao: $('printData').value.trim(),
@@ -1489,18 +1519,48 @@ function openSettingsModal() {
 async function saveSettings(e) {
   e.preventDefault();
   const payload = {
-    escola_nome: $('sEscola').value.trim() || 'Escola Adventista de Ibiúna',
+    escola_nome: $('sEscola').value.trim() || DEFAULT_SCHOOL_NAME,
     titulo_relatorio: $('sTitulo').value.trim() || 'CARÔMETRO GERAL - 2026 - ANO LETIVO',
     usuario_rodape: $('sUsuario').value.trim(),
   };
   try {
     await setDoc(doc(db, 'settings', 'geral'), payload, { merge: true });
+    applySchoolNameEverywhere(payload.escola_nome);
     delete $('printTitulo').dataset.edited;
     delete $('printUsuario').dataset.edited;
     $('settingsModal').hidden = true;
     showToast('Configurações salvas!');
   } catch (err) {
     showToast('Erro ao salvar configurações: ' + err.message, 'error');
+  }
+}
+
+let inlineSchoolEditing = false;
+function openInlineSchoolEditor() {
+  inlineSchoolEditing = true;
+  $('headerSchoolName').hidden = true;
+  const input = $('headerSchoolInput');
+  input.value = state.settings.escola_nome || DEFAULT_SCHOOL_NAME;
+  input.hidden = false;
+  input.focus();
+  input.select();
+}
+
+async function commitInlineSchoolName(save = true) {
+  if (!inlineSchoolEditing) return;
+  inlineSchoolEditing = false;
+  const input = $('headerSchoolInput');
+  const nextName = input.value.trim();
+  input.hidden = true;
+  $('headerSchoolName').hidden = false;
+
+  if (!save || !nextName || nextName === state.settings.escola_nome) return;
+  applySchoolNameEverywhere(nextName);
+  try {
+    await setDoc(doc(db, 'settings', 'geral'), { escola_nome: nextName }, { merge: true });
+    showToast('Nome da instituição atualizado em todo o sistema!');
+  } catch (err) {
+    showToast('Erro ao salvar nome da escola: ' + err.message, 'error');
   }
 }
 
@@ -1899,7 +1959,19 @@ function bindEvents() {
   $('btnOpenPdfPrint').addEventListener('click', () => downloadPdf(null, null, true));
   $('btnDownloadPdfFromPreview').addEventListener('click', () => downloadPdf(null, null, false));
 
-  // Modals
+  // Modals & Inline School Name Edit
+  $('headerSchoolName').addEventListener('click', openInlineSchoolEditor);
+  $('headerSchoolInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitInlineSchoolName(true);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      commitInlineSchoolName(false);
+    }
+  });
+  $('headerSchoolInput').addEventListener('blur', () => commitInlineSchoolName(true));
+
   $('btnCloseSettings').addEventListener('click', () => ($('settingsModal').hidden = true));
   $('settingsForm').addEventListener('submit', saveSettings);
   $('btnDownloadJsonBackup').addEventListener('click', downloadJsonBackup);
@@ -1920,6 +1992,7 @@ if (stickyChromeEl && typeof ResizeObserver !== 'undefined') {
 }
 
 // Init
+applySchoolNameEverywhere(state.settings.escola_nome);
 populateCargoSelect();
 renderPhoneRows();
 bindEvents();

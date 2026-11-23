@@ -91,7 +91,7 @@ function fitSingleLine(text, font, size, maxWidth) {
 }
 
 export async function generateCarometroPdfBlob(employees, options = {}) {
-  const escolaNome = options.escola_nome || 'Escola Adventista de Ibiúna';
+  const escolaNome = options.escola_nome || 'Colégio Adventista de Ibiúna';
   const tituloRelatorio = options.titulo_relatorio || 'CARÔMETRO GERAL - 2026 - ANO LETIVO';
   const usuarioRodape = options.usuario_rodape !== undefined ? String(options.usuario_rodape).trim() : '';
   const dataImpressao = options.data_impressao !== undefined ? String(options.data_impressao).trim() : formatTodayBR();
