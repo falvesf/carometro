@@ -274,8 +274,11 @@
               </div>
 
               <div class="field span-4">
-                <label for="fCargo">Cargo / Função (interno)</label>
-                <input type="text" id="fCargo" placeholder="Ex: Secretária, Auxiliar, Porteiro, Professor(a)" />
+                <label for="fCargoSelect">Cargo / Função (interno)</label>
+                <div class="cargo-field-wrap">
+                  <select id="fCargoSelect"></select>
+                  <input type="text" id="fCargoCustom" placeholder="Digite o cargo/função..." hidden />
+                </div>
               </div>
 
               <div class="field span-5">
@@ -335,8 +338,11 @@
               </div>
 
               <div class="field span-12">
-                <label for="fTelefones">Telefones</label>
-                <input type="text" id="fTelefones" placeholder="Ex: Celular - (15) 99999-9999 / WhatsApp - (11) 99999-9999" />
+                <div class="phones-header">
+                  <label>Telefones</label>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btnAddPhone">+ Adicionar Telefone</button>
+                </div>
+                <div id="phoneRowsContainer" class="phone-rows"></div>
               </div>
             </div>
           </div>

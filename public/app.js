@@ -108,6 +108,185 @@ function maskDate(val) {
   return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
 }
 
+function maskPhone(val) {
+  const d = val.replace(/\D/g, '').slice(0, 11);
+  if (d.length === 0) return '';
+  if (d.length <= 2) return `(${d}`;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+const CARGOS_LIST = [
+  'Administrador(a) Escolar',
+  'Administrador(a) Financeiro',
+  'Auxiliar de Administrativo',
+  'Auxiliar de Conservação e Limpeza',
+  'Auxiliar de SOE',
+  'Auxiliar de SOE e SOP',
+  'Auxiliar de SOP',
+  'Auxiliar de Tesouraria',
+  'Bibliotecário(a)',
+  'Capelão',
+  'Coordenador(a) Pedagógico(a)',
+  'Diretor(a)',
+  'Estagiário(a)',
+  'Inspetor(a) de Disciplina',
+  'Instrutor de Informática',
+  'Menor Aprendiz',
+  'Monitor(a) de Alunos',
+  'Monitor(a) de Classe',
+  'Orientador(a) Educacional',
+  'Porteiro(a)',
+  'Professor(a)',
+  'Promotor(a) de Matrículas',
+  'Secretário(a) Escolar',
+  'Tesoureiro(a)',
+  'Vice Diretor(a)',
+  'Zeladoria',
+].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+const CARGO_OTHER_VALUE = '__OUTRO__';
+
+function populateCargoSelect() {
+  const sel = $('fCargoSelect');
+  sel.innerHTML = [
+    '<option value="">Selecione...</option>',
+    ...CARGOS_LIST.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`),
+    `<option value="${CARGO_OTHER_VALUE}">Outro (digitar manualmente)...</option>`,
+  ].join('');
+}
+
+function setCargoValue(cargo) {
+  const val = String(cargo || '').trim();
+  const sel = $('fCargoSelect');
+  const custom = $('fCargoCustom');
+  if (!val) {
+    sel.value = '';
+    custom.value = '';
+    custom.hidden = true;
+    return;
+  }
+  const exact = CARGOS_LIST.find((c) => c.toLowerCase() === val.toLowerCase());
+  if (exact) {
+    sel.value = exact;
+    custom.value = '';
+    custom.hidden = true;
+  } else {
+    sel.value = CARGO_OTHER_VALUE;
+    custom.value = val;
+    custom.hidden = false;
+  }
+}
+
+function getCargoValue() {
+  const selVal = $('fCargoSelect').value;
+  if (selVal === CARGO_OTHER_VALUE) {
+    return $('fCargoCustom').value.trim();
+  }
+  return selVal;
+}
+
+const PHONE_TYPES = ['Celular', 'WhatsApp', 'Residencial', 'Comercial / Empresarial', 'Recado'];
+let phoneRows = [{ tipo: 'Celular', numero: '' }];
+
+function parsePhonesString(str) {
+  const raw = String(str || '').trim();
+  if (!raw) return [{ tipo: 'Celular', numero: '' }];
+
+  const parts = raw.split(/[,;/]+/).map((s) => s.trim()).filter(Boolean);
+  const parsed = [];
+
+  for (const part of parts) {
+    if (!/\d/.test(part)) continue; // ignore truncated fragments like ", Ce"
+    const m = part.match(/^([A-Za-zÀ-ÿ\s/]+?)\s*[-:]\s*(.+)$/);
+    if (m) {
+      const rawTipo = m[1].trim();
+      const numero = m[2].trim();
+      const matchedTipo =
+        PHONE_TYPES.find((t) => t.toLowerCase() === rawTipo.toLowerCase()) ||
+        (rawTipo.toLowerCase().includes('whats')
+          ? 'WhatsApp'
+          : rawTipo.toLowerCase().includes('resid')
+            ? 'Residencial'
+            : rawTipo.toLowerCase().includes('comerc') || rawTipo.toLowerCase().includes('empres')
+              ? 'Comercial / Empresarial'
+              : rawTipo.toLowerCase().includes('recad')
+                ? 'Recado'
+                : 'Celular');
+      parsed.push({ tipo: matchedTipo, numero });
+    } else {
+      parsed.push({ tipo: 'Celular', numero: part });
+    }
+  }
+  return parsed.length > 0 ? parsed : [{ tipo: 'Celular', numero: '' }];
+}
+
+function serializePhoneRows() {
+  return phoneRows
+    .map((r) => ({ tipo: r.tipo, numero: (r.numero || '').trim() }))
+    .filter((r) => r.numero.length > 0)
+    .map((r) => `${r.tipo} - ${r.numero}`)
+    .join(', ');
+}
+
+function renderPhoneRows() {
+  const container = $('phoneRowsContainer');
+  container.innerHTML = phoneRows
+    .map(
+      (row, idx) => `
+      <div class="phone-row" data-phone-idx="${idx}">
+        <select class="phone-type-select" aria-label="Tipo de contato">
+          ${PHONE_TYPES.map(
+            (t) => `<option value="${escapeHtml(t)}" ${row.tipo === t ? 'selected' : ''}>${escapeHtml(t)}</option>`
+          ).join('')}
+        </select>
+        <input
+          type="text"
+          class="phone-number-input"
+          value="${escapeHtml(row.numero)}"
+          placeholder="(11) 99999-9999"
+          maxlength="16"
+        />
+        <button
+          type="button"
+          class="btn btn-danger-outline btn-sm phone-remove-btn"
+          title="Remover telefone"
+        >&times;</button>
+      </div>
+    `
+    )
+    .join('');
+
+  container.querySelectorAll('.phone-row').forEach((rowEl) => {
+    const idx = parseInt(rowEl.dataset.phoneIdx, 10);
+    rowEl.querySelector('.phone-type-select').addEventListener('change', (e) => {
+      phoneRows[idx].tipo = e.target.value;
+      renderLiveCardPreview();
+    });
+    rowEl.querySelector('.phone-number-input').addEventListener('input', (e) => {
+      const masked = maskPhone(e.target.value);
+      e.target.value = masked;
+      phoneRows[idx].numero = masked;
+      renderLiveCardPreview();
+    });
+    rowEl.querySelector('.phone-remove-btn').addEventListener('click', () => {
+      if (phoneRows.length <= 1) {
+        phoneRows[0] = { tipo: 'Celular', numero: '' };
+      } else {
+        phoneRows.splice(idx, 1);
+      }
+      renderPhoneRows();
+      renderLiveCardPreview();
+    });
+  });
+}
+
+function setPhoneRowsFromString(str) {
+  phoneRows = parsePhonesString(str);
+  renderPhoneRows();
+}
+
 // =========================================================
 // Interactive 3x4 Photo Cropper (300x350 = 6:7 portrait)
 // =========================================================
@@ -753,7 +932,7 @@ function startNewEmployeeForm() {
   $('fNome').value = '';
   $('fCpf').value = '';
   $('fTipo').value = state.filters.tipo === 'Professor' ? 'Professor' : 'Funcionário';
-  $('fCargo').value = '';
+  setCargoValue(state.filters.tipo === 'Professor' ? 'Professor(a)' : '');
   $('fEmail').value = '';
   $('fEndereco').value = '';
   $('fNascimento').value = '';
@@ -764,7 +943,7 @@ function startNewEmployeeForm() {
   $('fDataContratacao').value = '';
   $('fDataDemissao').value = '';
   $('fAssinatura').checked = true;
-  $('fTelefones').value = '';
+  setPhoneRowsFromString('');
 
   updatePhotoEditorUI('');
   updateNavButtons();
@@ -792,7 +971,7 @@ function loadCurrentRecordIntoForm() {
   $('fNome').value = emp.nome || '';
   $('fCpf').value = emp.cpf || '';
   $('fTipo').value = emp.tipo || 'Funcionário';
-  $('fCargo').value = emp.cargo || '';
+  setCargoValue(emp.cargo || '');
   $('fEmail').value = emp.email || '';
   $('fEndereco').value = emp.endereco || '';
   $('fNascimento').value = emp.data_nascimento || '';
@@ -803,7 +982,7 @@ function loadCurrentRecordIntoForm() {
   $('fDataContratacao').value = emp.data_contratacao || '';
   $('fDataDemissao').value = emp.data_demissao || '';
   $('fAssinatura').checked = Boolean(emp.tem_assinatura_digitalizada);
-  $('fTelefones').value = emp.telefones || '';
+  setPhoneRowsFromString(emp.telefones || '');
 
   updatePhotoEditorUI(emp.foto_data || '');
   updateNavButtons();
@@ -864,7 +1043,7 @@ function getFormEmployeeSnapshot() {
     nome: $('fNome').value.trim(),
     cpf: $('fCpf').value.trim(),
     tipo: $('fTipo').value,
-    cargo: $('fCargo').value.trim(),
+    cargo: getCargoValue(),
     email: $('fEmail').value.trim(),
     endereco: $('fEndereco').value.trim(),
     data_nascimento: $('fNascimento').value.trim(),
@@ -875,7 +1054,7 @@ function getFormEmployeeSnapshot() {
     data_contratacao: $('fDataContratacao').value.trim(),
     data_demissao: $('fDataDemissao').value.trim(),
     tem_assinatura_digitalizada: $('fAssinatura').checked ? 1 : 0,
-    telefones: $('fTelefones').value.trim(),
+    telefones: serializePhoneRows(),
     foto_data: photoData,
   };
 }
@@ -1435,12 +1614,25 @@ function bindEvents() {
       renderLiveCardPreview();
     });
   });
-  ['fCodigo', 'fNome', 'fTipo', 'fCargo', 'fEmail', 'fEndereco', 'fSexo', 'fRg', 'fEmitidoPor', 'fTelefones'].forEach(
+  ['fCodigo', 'fNome', 'fTipo', 'fEmail', 'fEndereco', 'fSexo', 'fRg', 'fEmitidoPor'].forEach(
     (id) => {
       $(id).addEventListener('input', renderLiveCardPreview);
       $(id).addEventListener('change', renderLiveCardPreview);
     }
   );
+  $('fCargoSelect').addEventListener('change', (e) => {
+    const isOther = e.target.value === CARGO_OTHER_VALUE;
+    $('fCargoCustom').hidden = !isOther;
+    if (isOther) $('fCargoCustom').focus();
+    renderLiveCardPreview();
+  });
+  $('fCargoCustom').addEventListener('input', renderLiveCardPreview);
+  $('btnAddPhone').addEventListener('click', () => {
+    phoneRows.push({ tipo: 'WhatsApp', numero: '' });
+    renderPhoneRows();
+    const inputs = $('phoneRowsContainer').querySelectorAll('.phone-number-input');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  });
   $('fAssinatura').addEventListener('change', renderLiveCardPreview);
 
   // Photo drag/drop/click & 3x4 cropper
@@ -1564,6 +1756,8 @@ function bindEvents() {
 }
 
 // Init
+populateCargoSelect();
+renderPhoneRows();
 bindEvents();
 onAuthStateChanged(auth, (user) => {
   if (!user) {

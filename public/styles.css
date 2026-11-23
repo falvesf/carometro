@@ -877,6 +877,39 @@ body {
   height: 36px;
 }
 
+.cargo-field-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.phones-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.phone-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.phone-row {
+  display: grid;
+  grid-template-columns: 200px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 620px) {
+  .phone-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .form-footer {
   margin-top: 20px;
   padding-top: 16px;
