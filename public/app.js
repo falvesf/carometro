@@ -1440,7 +1440,7 @@ function getFormEmployeeSnapshot() {
   };
 }
 
-function buildCardHtml(emp, standalone = false) {
+function buildCardHtml(emp, standalone = false, showCargo = true) {
   const photoSrc = emp.foto_data || '';
   const photoHtml = photoSrc
     ? `<img src="${photoSrc}" alt="" />`
@@ -1448,6 +1448,11 @@ function buildCardHtml(emp, standalone = false) {
 
   const checkHtml = emp.tem_assinatura_digitalizada
     ? `<img src="./assets/checkmark.png" class="cm-check-icon" alt="Sim" />`
+    : '';
+
+  const cargoVal = emp.cargo || (emp.tipo === 'Professor' ? 'Professor(a)' : '');
+  const cargoHtml = showCargo
+    ? `<div class="cm-cargo">Cargo / Função: ${escapeHtml(cargoVal)}</div>`
     : '';
 
   return `
@@ -1478,6 +1483,7 @@ function buildCardHtml(emp, standalone = false) {
           </span>
         </div>
         <div class="cm-tel">Telefones: ${escapeHtml(emp.telefones || '')}</div>
+        ${cargoHtml}
       </div>
       <div class="cm-photo-box">${photoHtml}</div>
     </div>
@@ -1486,7 +1492,7 @@ function buildCardHtml(emp, standalone = false) {
 
 function renderLiveCardPreview() {
   const snap = getFormEmployeeSnapshot();
-  $('liveCardPreview').innerHTML = buildCardHtml(snap, true);
+  $('liveCardPreview').innerHTML = buildCardHtml(snap, true, true);
 }
 
 // Photo handling
@@ -1710,15 +1716,26 @@ function getEmployeesForPrint(overrideScope = null, specificIds = null) {
   return state.employees;
 }
 
-function estimateHtmlCardHeightPt(emp) {
+function shouldShowCargo(overrideScope = null, specificIds = null) {
+  if (specificIds && specificIds.length > 0) return true;
+  const scope = overrideScope || $('printScope')?.value || 'filtered';
+  if (scope === 'professores') return false;
+  if ((scope === 'filtered' || scope === 'selected') && state.filters.tipo === 'Professor') {
+    return false;
+  }
+  return true;
+}
+
+function estimateHtmlCardHeightPt(emp, showCargo = true) {
   const addrLen = (`Endereço: ${emp.endereco || ''}`).length;
   const addrLines = Math.max(1, Math.ceil(addrLen / 95));
   const telLen = (`Telefones: ${emp.telefones || ''}`).length;
   const telLines = Math.max(1, Math.ceil(telLen / 95));
-  return Math.max(96, 86 + (addrLines - 1) * 11.4 + (telLines - 1) * 11.4);
+  const extraCargo = showCargo ? 11.4 : 0;
+  return Math.max(96, 84 + (addrLines - 1) * 11.4 + (telLines - 1) * 11.4 + extraCargo);
 }
 
-function buildA4PagesHtml(employees) {
+function buildA4PagesHtml(employees, showCargo = true) {
   const escola = state.settings.escola_nome || DEFAULT_SCHOOL_NAME;
   const titulo = $('printTitulo').value.trim() || state.settings.titulo_relatorio;
   const usuario = $('printUsuario').value.trim();
@@ -1728,7 +1745,7 @@ function buildA4PagesHtml(employees) {
   let current = [];
   let y = 78.3;
   for (const emp of employees) {
-    const h = estimateHtmlCardHeightPt(emp);
+    const h = estimateHtmlCardHeightPt(emp, showCargo);
     if (current.length >= 7 || (current.length > 0 && y + h > 792)) {
       pages.push(current);
       current = [];
@@ -1744,7 +1761,7 @@ function buildA4PagesHtml(employees) {
   const totalPages = pages.length;
   return pages
     .map((group, pIdx) => {
-      const cardsHtml = group.map((emp) => buildCardHtml(emp, false)).join('');
+      const cardsHtml = group.map((emp) => buildCardHtml(emp, false, showCargo)).join('');
       return `
         <div class="a4-page">
           <div class="cm-header">
@@ -1766,26 +1783,30 @@ function buildA4PagesHtml(employees) {
 
 function renderPrintPreview() {
   const list = getEmployeesForPrint();
-  const html = buildA4PagesHtml(list);
+  const showCargo = shouldShowCargo();
+  const html = buildA4PagesHtml(list, showCargo);
   $('printPreviewContainer').innerHTML = html;
   $('printOnlyRoot').innerHTML = html;
 }
 
 function triggerBrowserPrint(overrideScope = null, specificIds = null) {
   const list = getEmployeesForPrint(overrideScope, specificIds);
-  $('printOnlyRoot').innerHTML = buildA4PagesHtml(list);
+  const showCargo = shouldShowCargo(overrideScope, specificIds);
+  $('printOnlyRoot').innerHTML = buildA4PagesHtml(list, showCargo);
   window.print();
 }
 
 async function downloadPdf(overrideScope = null, specificIds = null, inline = false) {
   try {
     const list = getEmployeesForPrint(overrideScope, specificIds);
+    const showCargo = shouldShowCargo(overrideScope, specificIds);
     showToast('Gerando PDF...');
     const blob = await generateCarometroPdfBlob(list, {
       escola_nome: state.settings.escola_nome || DEFAULT_SCHOOL_NAME,
       titulo_relatorio: $('printTitulo').value.trim() || state.settings.titulo_relatorio,
       usuario_rodape: $('printUsuario').value.trim(),
       data_impressao: $('printData').value.trim(),
+      show_cargo: showCargo,
     });
     const url = URL.createObjectURL(blob);
     if (inline) {

@@ -1285,6 +1285,15 @@ body {
   line-height: 11.4pt;
 }
 
+.cm-cargo {
+  margin-top: 0.6pt;
+  max-width: 472pt;
+  line-height: 11.4pt;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .cm-photo-box {
   position: absolute;
   left: 484.5pt; /* 502.5 - 18 */

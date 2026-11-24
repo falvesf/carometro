@@ -95,6 +95,7 @@ export async function generateCarometroPdfBlob(employees, options = {}) {
   const tituloRelatorio = options.titulo_relatorio || 'CARÔMETRO GERAL - 2026 - ANO LETIVO';
   const usuarioRodape = options.usuario_rodape !== undefined ? String(options.usuario_rodape).trim() : '';
   const dataImpressao = options.data_impressao !== undefined ? String(options.data_impressao).trim() : formatTodayBR();
+  const showCargo = options.show_cargo !== false;
 
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(`${escolaNome} - ${tituloRelatorio}`);
@@ -125,7 +126,8 @@ export async function generateCarometroPdfBlob(employees, options = {}) {
     const telLines = wrapLines(`Telefones: ${emp.telefones || ''}`, fontReg, 8.95, 468);
     const extraAddr = Math.max(0, (addrLines.length - 1) * 11.4);
     const extraTel = Math.max(0, (telLines.length - 1) * 11.4);
-    const cardHeight = Math.max(96, 86 + extraAddr + extraTel);
+    const extraCargo = showCargo ? 11.4 : 0;
+    const cardHeight = Math.max(96, 84 + extraAddr + extraTel + extraCargo);
     return { emp, addrLines, telLines, extraAddr, extraTel, cardHeight };
   }
 
@@ -387,6 +389,20 @@ export async function generateCarometroPdfBlob(employees, options = {}) {
           color: black,
         });
       });
+
+      // Row 7: Cargo / Função (omitted when filtered to Professores only)
+      if (showCargo) {
+        const cargoVal = emp.cargo || (emp.tipo === 'Professor' ? 'Professor(a)' : '');
+        const row7Base = row6Base + 11.4 + item.extraTel;
+        const cargoFit = fitSingleLine(`Cargo / Função: ${cargoVal}`, fontReg, 8.95, 468);
+        page.drawText(cargoFit, {
+          x: 18,
+          y: PAGE_H - row7Base,
+          size: 8.95,
+          font: fontReg,
+          color: black,
+        });
+      }
     }
 
     // Footer
