@@ -221,6 +221,14 @@
           </div>
         </div>
 
+        <!-- Unsaved changes inline alert -->
+        <div id="unsavedBanner" class="unsaved-banner" hidden>
+          <span>
+            <strong>Cadastro ainda não salvo:</strong> clique em <strong>Salvar Cadastro</strong> antes de sair da guia ou recarregar a página para gravar definitivamente no banco.
+          </span>
+          <button type="button" class="btn btn-sm btn-primary" id="btnQuickSave">Salvar Agora</button>
+        </div>
+
         <!-- Live Model Card Preview -->
         <div class="card live-preview-box">
           <div class="live-preview-header">
@@ -548,6 +556,63 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="btnCancelCrop">Cancelar</button>
         <button type="button" class="btn btn-primary" id="btnApplyCrop">Aplicar Enquadramento</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unsaved Changes Modal -->
+  <div id="unsavedModal" class="modal-backdrop" hidden>
+    <div class="modal modal-md card">
+      <div class="modal-header">
+        <h2>Cadastro Não Salvo</h2>
+        <button class="icon-close" id="btnCloseUnsaved" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="unsavedMessage">
+          Existem alterações nesta ficha que ainda <strong>não foram salvas</strong> no banco de dados. Sair desta tela ou recarregar a página sem salvar fará perder o envio definitivo.
+        </p>
+      </div>
+      <div class="modal-footer modal-footer-wrap">
+        <button type="button" class="btn btn-secondary" id="btnUnsavedStay">Voltar e Continuar Editando</button>
+        <button type="button" class="btn btn-danger-outline" id="btnUnsavedDiscard">Descartar Alterações</button>
+        <button type="button" class="btn btn-primary" id="btnUnsavedSaveAndGo">Salvar e Continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Draft Recovery Modal (after page reload / reopen) -->
+  <div id="draftRecoveryModal" class="modal-backdrop" hidden>
+    <div class="modal modal-md card">
+      <div class="modal-header">
+        <h2>Cadastro Não Finalizado Encontrado</h2>
+        <button class="icon-close" id="btnCloseDraft" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="draftRecoveryMessage">
+          Encontramos um rascunho de cadastro que não foi salvo anteriormente. Deseja retomar de onde parou para concluir e salvar?
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnDraftDiscard">Descartar Rascunho</button>
+        <button type="button" class="btn btn-primary" id="btnDraftResume">Retomar Cadastro Não Salvo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Duplicate CPF / Código Warning Modal -->
+  <div id="duplicateModal" class="modal-backdrop" hidden>
+    <div class="modal modal-md card">
+      <div class="modal-header">
+        <h2>Possível Cadastro Duplicado</h2>
+        <button class="icon-close" id="btnCloseDuplicate" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="duplicateMessage"></p>
+      </div>
+      <div class="modal-footer modal-footer-wrap">
+        <button type="button" class="btn btn-secondary" id="btnDupCancel">Voltar</button>
+        <button type="button" class="btn btn-primary-outline" id="btnDupOpenExisting">Abrir Cadastro Existente</button>
+        <button type="button" class="btn btn-primary" id="btnDupSaveAnyway">Salvar Mesmo Assim</button>
       </div>
     </div>
   </div>

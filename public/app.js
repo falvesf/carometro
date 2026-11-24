@@ -60,7 +60,16 @@ const state = {
   },
   selectedIds: new Set(),
   currentIndex: 0,
+  editingRecordId: null,
+  loadedUpdatedAtMs: null,
+  pendingSelectId: null,
   isNewMode: false,
+  isDirty: false,
+  isSaving: false,
+  draftChecked: false,
+  pendingNavAction: null,
+  pendingDuplicateMatch: null,
+  pendingDuplicateOpts: null,
   pendingPhotoDataUrl: '',
   rawPhotoObjectUrl: '',
   removePhotoFlag: false,
@@ -263,6 +272,7 @@ async function lookupCepIfComplete(cepMasked) {
     if (data.localidade && !$('fEndCidade').value.trim()) $('fEndCidade').value = data.localidade;
     if (data.uf && !$('fEndUf').value.trim()) $('fEndUf').value = data.uf;
     renderLiveCardPreview();
+    markFormDirty();
   } catch {
     // Ignore offline / lookup failures silently
   }
@@ -414,12 +424,14 @@ function renderPhoneRows() {
     rowEl.querySelector('.phone-type-select').addEventListener('change', (e) => {
       phoneRows[idx].tipo = e.target.value;
       renderLiveCardPreview();
+      markFormDirty();
     });
     rowEl.querySelector('.phone-number-input').addEventListener('input', (e) => {
       const masked = maskPhone(e.target.value);
       e.target.value = masked;
       phoneRows[idx].numero = masked;
       renderLiveCardPreview();
+      markFormDirty();
     });
     rowEl.querySelector('.phone-remove-btn').addEventListener('click', () => {
       if (phoneRows.length <= 1) {
@@ -429,6 +441,7 @@ function renderPhoneRows() {
       }
       renderPhoneRows();
       renderLiveCardPreview();
+      markFormDirty();
     });
   });
 }
@@ -539,6 +552,7 @@ function applyPhotoCrop() {
   state.removePhotoFlag = false;
   updatePhotoEditorUI(dataUrl);
   renderLiveCardPreview();
+  markFormDirty();
   closePhotoCropper(true);
 }
 
@@ -956,11 +970,39 @@ function applyFiltersAndRender() {
   renderStats();
   renderTable();
   updatePrintScopeOptions();
-  if (state.activeTab === 'ficha' && !state.isNewMode) {
-    loadCurrentRecordIntoForm();
+
+  if (state.pendingSelectId) {
+    const idx = state.employees.findIndex((item) => item.id === state.pendingSelectId);
+    if (idx >= 0) {
+      state.pendingSelectId = null;
+      state.currentIndex = idx;
+      loadCurrentRecordIntoForm();
+    }
+  } else if (state.activeTab === 'ficha' && !state.isNewMode) {
+    if (state.editingRecordId) {
+      const idx = state.employees.findIndex((item) => item.id === state.editingRecordId);
+      if (idx >= 0) {
+        state.currentIndex = idx;
+        updateNavButtons();
+        const emp = state.employees[idx];
+        if (!state.isDirty && emp.updated_at_ms !== state.loadedUpdatedAtMs) {
+          loadCurrentRecordIntoForm();
+        }
+      } else if (!state.isDirty) {
+        loadCurrentRecordIntoForm();
+      } else {
+        showToast('Atenção: este registro foi modificado ou removido por outro usuário. Salve para não perder suas alterações.', 'error');
+      }
+    }
   }
+
   if (state.activeTab === 'impressao') {
     renderPrintPreview();
+  }
+
+  if (!state.draftChecked) {
+    state.draftChecked = true;
+    checkPendingDraftOnLogin();
   }
 }
 
@@ -1067,6 +1109,158 @@ function renderTable() {
 // =========================================================
 // Tabs & Ficha / Navigator
 // =========================================================
+// =========================================================
+// Draft Persistence & Unsaved Changes Guard (No browser confirm/alert)
+// =========================================================
+function getDraftStorageKey() {
+  const email = (state.user?.email || 'anon').toLowerCase();
+  return `carometro_unsaved_draft_${email}`;
+}
+
+function saveDraftToStorage() {
+  if (!state.user) return;
+  try {
+    const snap = getFormEmployeeSnapshot();
+    const hasContent = Boolean(
+      snap.nome || snap.codigo || snap.cpf || snap.email || snap.endereco || snap.telefones || snap.foto_data
+    );
+    if (!hasContent && state.isNewMode) {
+      localStorage.removeItem(getDraftStorageKey());
+      return;
+    }
+    const payload = {
+      isNewMode: state.isNewMode,
+      editingRecordId: state.editingRecordId,
+      snapshot: snap,
+      savedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem(getDraftStorageKey(), JSON.stringify(payload));
+    } catch {
+      // Fallback without photo if localStorage quota is tight
+      payload.snapshot = { ...snap, foto_data: '' };
+      localStorage.setItem(getDraftStorageKey(), JSON.stringify(payload));
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function clearDraftFromStorage() {
+  try {
+    localStorage.removeItem(getDraftStorageKey());
+  } catch {
+    // ignore
+  }
+}
+
+function loadDraftFromStorage() {
+  try {
+    const raw = localStorage.getItem(getDraftStorageKey());
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.snapshot) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function updateDirtyUI() {
+  const banner = $('unsavedBanner');
+  const pill = $('fichaModePill');
+  const saveBtn = $('btnSaveEmployee');
+  if (banner) banner.hidden = !state.isDirty;
+
+  if (pill) {
+    pill.classList.toggle('is-dirty', state.isDirty);
+    if (state.isDirty) {
+      pill.textContent = '● Alterações não salvas';
+    } else if (state.isNewMode) {
+      pill.textContent = 'Novo cadastro';
+    } else if (state.editingRecordId) {
+      const emp = state.employees[state.currentIndex];
+      pill.textContent = emp ? `Editando #${emp.codigo || emp.id.slice(0, 6)}` : 'Editando registro';
+    }
+  }
+
+  if (saveBtn) {
+    saveBtn.classList.toggle('btn-save-dirty', state.isDirty);
+    saveBtn.textContent = state.isDirty ? 'Salvar Cadastro *' : 'Salvar Cadastro';
+  }
+}
+
+function markFormDirty(persistDraft = true) {
+  state.isDirty = true;
+  updateDirtyUI();
+  if (persistDraft) saveDraftToStorage();
+}
+
+function clearFormDirty(clearStorage = true) {
+  state.isDirty = false;
+  updateDirtyUI();
+  if (clearStorage) clearDraftFromStorage();
+}
+
+function guardUnsavedChanges(action) {
+  if (state.activeTab === 'ficha' && state.isDirty) {
+    state.pendingNavAction = action;
+    const snap = getFormEmployeeSnapshot();
+    const label = snap.nome ? `"${snap.nome}"` : 'este registro';
+    $('unsavedMessage').innerHTML = `As alterações feitas em <strong>${escapeHtml(label)}</strong> ainda <strong>não foram salvas</strong> no banco de dados. Sair desta guia ou recarregar a página sem salvar fará perder o envio definitivo.`;
+    $('unsavedModal').hidden = false;
+    return false;
+  }
+  action();
+  return true;
+}
+
+function applySnapshotToForm(emp, isNew = false, recordId = null) {
+  state.isNewMode = isNew;
+  state.editingRecordId = recordId;
+  clearPendingPhotoState();
+
+  $('empId').value = recordId || '';
+  $('fCodigo').value = emp.codigo || '';
+  $('fNome').value = emp.nome || '';
+  $('fCpf').value = emp.cpf || '';
+  $('fTipo').value = emp.tipo || 'Funcionário';
+  setCargoValue(emp.cargo || '');
+  $('fEmail').value = emp.email || '';
+  setAddressFields(emp);
+  $('fNascimento').value = emp.data_nascimento || '';
+  $('fSexo').value = emp.sexo || '';
+  $('fRg').value = emp.rg || '';
+  $('fEmitidoPor').value = emp.emitido_por || (isNew ? 'SSP/SP' : '');
+  $('fDataEmissao').value = emp.data_emissao || '';
+  $('fDataContratacao').value = emp.data_contratacao || '';
+  $('fDataDemissao').value = emp.data_demissao || '';
+  $('fAssinatura').checked = emp.tem_assinatura_digitalizada !== undefined ? Boolean(emp.tem_assinatura_digitalizada) : true;
+  setPhoneRowsFromString(emp.telefones || '');
+
+  if (emp.foto_data) {
+    state.pendingPhotoDataUrl = emp.foto_data;
+  } else if (!isNew) {
+    state.removePhotoFlag = true;
+  }
+
+  updatePhotoEditorUI(emp.foto_data || '');
+  updateNavButtons();
+  $('btnFichaDelete').disabled = isNew;
+  $('btnFichaPrintOne').disabled = isNew;
+  $('btnFichaPdfOne').disabled = isNew;
+  renderLiveCardPreview();
+}
+
+function checkPendingDraftOnLogin() {
+  const draft = loadDraftFromStorage();
+  if (!draft) return;
+  const s = draft.snapshot || {};
+  const label = [s.codigo, s.nome].filter(Boolean).join(' — ') || 'Novo funcionário sem nome';
+  $('draftRecoveryMessage').innerHTML = `Encontramos um cadastro que não foi salvo antes da página ser fechada ou recarregada: <strong>${escapeHtml(label)}</strong>. Deseja retomar de onde parou para concluir e salvar?`;
+  $('draftRecoveryModal').hidden = false;
+}
+
 function switchTab(tabName) {
   state.activeTab = tabName;
   document.querySelectorAll('.tab').forEach((t) => {
@@ -1077,7 +1271,7 @@ function switchTab(tabName) {
   });
 
   if (tabName === 'ficha') {
-    if (!state.isNewMode) loadCurrentRecordIntoForm();
+    if (!state.isNewMode && !state.isDirty) loadCurrentRecordIntoForm();
   } else if (tabName === 'impressao') {
     updatePrintScopeOptions();
     renderPrintPreview();
@@ -1092,43 +1286,50 @@ function clearPendingPhotoState() {
 }
 
 function openRecordInFicha(index) {
-  state.isNewMode = false;
-  state.currentIndex = Math.max(0, Math.min(index, state.employees.length - 1));
-  switchTab('ficha');
-  loadCurrentRecordIntoForm();
+  const safeIdx = Math.max(0, Math.min(index, state.employees.length - 1));
+  guardUnsavedChanges(() => {
+    state.isNewMode = false;
+    state.currentIndex = safeIdx;
+    switchTab('ficha');
+    loadCurrentRecordIntoForm();
+  });
 }
 
 function startNewEmployeeForm() {
-  state.isNewMode = true;
-  clearPendingPhotoState();
+  guardUnsavedChanges(() => {
+    state.isNewMode = true;
+    state.editingRecordId = null;
+    state.loadedUpdatedAtMs = null;
+    clearPendingPhotoState();
 
-  $('empId').value = '';
-  $('fCodigo').value = '';
-  $('fNome').value = '';
-  $('fCpf').value = '';
-  $('fTipo').value = state.filters.tipo === 'Professor' ? 'Professor' : 'Funcionário';
-  setCargoValue(state.filters.tipo === 'Professor' ? 'Professor(a)' : '');
-  $('fEmail').value = '';
-  setAddressFields(null);
-  $('fNascimento').value = '';
-  $('fSexo').value = '';
-  $('fRg').value = '';
-  $('fEmitidoPor').value = 'SSP/SP';
-  $('fDataEmissao').value = '';
-  $('fDataContratacao').value = '';
-  $('fDataDemissao').value = '';
-  $('fAssinatura').checked = true;
-  setPhoneRowsFromString('');
+    $('empId').value = '';
+    $('fCodigo').value = '';
+    $('fNome').value = '';
+    $('fCpf').value = '';
+    $('fTipo').value = state.filters.tipo === 'Professor' ? 'Professor' : 'Funcionário';
+    setCargoValue(state.filters.tipo === 'Professor' ? 'Professor(a)' : '');
+    $('fEmail').value = '';
+    setAddressFields(null);
+    $('fNascimento').value = '';
+    $('fSexo').value = '';
+    $('fRg').value = '';
+    $('fEmitidoPor').value = 'SSP/SP';
+    $('fDataEmissao').value = '';
+    $('fDataContratacao').value = '';
+    $('fDataDemissao').value = '';
+    $('fAssinatura').checked = true;
+    setPhoneRowsFromString('');
 
-  updatePhotoEditorUI('');
-  updateNavButtons();
-  $('fichaModePill').textContent = 'Novo cadastro';
-  $('btnFichaDelete').disabled = true;
-  $('btnFichaPrintOne').disabled = true;
-  $('btnFichaPdfOne').disabled = true;
-  renderLiveCardPreview();
-  switchTab('ficha');
-  $('fNome').focus();
+    updatePhotoEditorUI('');
+    updateNavButtons();
+    $('btnFichaDelete').disabled = true;
+    $('btnFichaPrintOne').disabled = true;
+    $('btnFichaPdfOne').disabled = true;
+    clearFormDirty(false);
+    renderLiveCardPreview();
+    switchTab('ficha');
+    $('fNome').focus();
+  });
 }
 
 function loadCurrentRecordIntoForm() {
@@ -1141,6 +1342,9 @@ function loadCurrentRecordIntoForm() {
   clearPendingPhotoState();
 
   const emp = state.employees[state.currentIndex];
+  state.editingRecordId = emp.id;
+  state.loadedUpdatedAtMs = emp.updated_at_ms || null;
+
   $('empId').value = emp.id;
   $('fCodigo').value = emp.codigo || '';
   $('fNome').value = emp.nome || '';
@@ -1161,10 +1365,10 @@ function loadCurrentRecordIntoForm() {
 
   updatePhotoEditorUI(emp.foto_data || '');
   updateNavButtons();
-  $('fichaModePill').textContent = `Editando #${emp.codigo || emp.id.slice(0, 6)}`;
   $('btnFichaDelete').disabled = false;
   $('btnFichaPrintOne').disabled = false;
   $('btnFichaPdfOne').disabled = false;
+  clearFormDirty(false);
   renderLiveCardPreview();
 }
 
@@ -1306,13 +1510,37 @@ function openCurrentPhotoInCropper() {
 // =========================================================
 // Firestore CRUD (Add / Edit / Delete)
 // =========================================================
-async function handleSaveEmployee(e) {
-  e.preventDefault();
+async function handleSaveEmployee(e, opts = {}) {
+  if (e) e.preventDefault();
+  if (state.isSaving) return false;
+
   const snap = getFormEmployeeSnapshot();
   if (!snap.nome) {
     showToast('Informe o nome completo do funcionário.', 'error');
     $('fNome').focus();
-    return;
+    return false;
+  }
+
+  const isNew = state.isNewMode || !snap.id;
+
+  // Guard against accidental duplicate CPF or Código on new entries
+  if (isNew && !opts.forceDuplicate) {
+    const cpfDigits = snap.cpf.replace(/\D/g, '');
+    const codeClean = snap.codigo.trim();
+    const match = state.allEmployees.find((emp) => {
+      const empCpf = (emp.cpf || '').replace(/\D/g, '');
+      const empCode = (emp.codigo || '').trim();
+      const sameCpf = cpfDigits.length === 11 && empCpf === cpfDigits;
+      const sameCode = codeClean.length > 0 && empCode === codeClean;
+      return sameCpf || sameCode;
+    });
+    if (match) {
+      state.pendingDuplicateMatch = match;
+      state.pendingDuplicateOpts = opts;
+      $('duplicateMessage').innerHTML = `Já existe um cadastro com os mesmos dados: <strong>${escapeHtml(match.nome)}</strong> (Código: ${escapeHtml(match.codigo || 'S/N')}, CPF: ${escapeHtml(match.cpf || 'S/N')}). O que deseja fazer?`;
+      $('duplicateModal').hidden = false;
+      return false;
+    }
   }
 
   const record = {
@@ -1337,8 +1565,8 @@ async function handleSaveEmployee(e) {
     updated_at_ms: Date.now(),
   };
 
-  const isNew = state.isNewMode || !snap.id;
   const btn = $('btnSaveEmployee');
+  state.isSaving = true;
   btn.disabled = true;
 
   try {
@@ -1347,26 +1575,34 @@ async function handleSaveEmployee(e) {
       record.created_at_ms = Date.now();
       const docRef = await addDoc(collection(db, 'employees'), record);
       savedId = docRef.id;
-      showToast('Funcionário cadastrado no Firebase!');
+      showToast('Funcionário cadastrado com sucesso!');
     } else {
       await updateDoc(doc(db, 'employees', snap.id), record);
-      showToast('Cadastro atualizado!');
+      showToast('Cadastro atualizado com sucesso!');
     }
 
     state.isNewMode = false;
+    state.editingRecordId = savedId;
+    state.pendingSelectId = savedId;
     clearPendingPhotoState();
+    clearFormDirty(true);
 
-    // Update currentIndex after snapshot refreshes
-    setTimeout(() => {
-      const idx = state.employees.findIndex((item) => item.id === savedId);
-      if (idx >= 0) {
-        state.currentIndex = idx;
-        loadCurrentRecordIntoForm();
-      }
-    }, 180);
+    const existingIdx = state.employees.findIndex((item) => item.id === savedId);
+    if (existingIdx >= 0) {
+      state.pendingSelectId = null;
+      state.currentIndex = existingIdx;
+      loadCurrentRecordIntoForm();
+    }
+
+    if (typeof opts.onAfterSave === 'function') {
+      opts.onAfterSave();
+    }
+    return true;
   } catch (err) {
     showToast('Erro ao salvar: ' + err.message, 'error');
+    return false;
   } finally {
+    state.isSaving = false;
     btn.disabled = false;
   }
 }
@@ -1387,6 +1623,10 @@ async function confirmDeleteEmployee() {
     $('confirmModal').hidden = true;
     state.pendingDeleteId = null;
     state.selectedIds.delete(id);
+    if (state.editingRecordId === id) {
+      state.editingRecordId = null;
+      clearFormDirty(true);
+    }
     showToast('Registro excluído com sucesso.');
   } catch (err) {
     showToast('Erro ao excluir: ' + err.message, 'error');
@@ -1743,7 +1983,9 @@ function bindEvents() {
     }
   });
 
-  $('btnLogout').addEventListener('click', () => signOut(auth));
+  $('btnLogout').addEventListener('click', () =>
+    guardUnsavedChanges(() => signOut(auth))
+  );
   $('btnPendingLogout').addEventListener('click', () => signOut(auth));
   $('btnRetryAuthCheck').addEventListener('click', () => {
     if (auth.currentUser) handleUserSignedIn(auth.currentUser);
@@ -1751,17 +1993,23 @@ function bindEvents() {
 
   // Tabs
   document.querySelectorAll('.tab').forEach((btn) => {
-    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    btn.addEventListener('click', () => {
+      const targetTab = btn.dataset.tab;
+      if (targetTab === state.activeTab) return;
+      guardUnsavedChanges(() => switchTab(targetTab));
+    });
   });
 
   // Topbar buttons
   $('btnNewEmployee').addEventListener('click', startNewEmployeeForm);
   $('btnPrintPreview').addEventListener('click', () => {
-    updatePrintScopeOptions();
-    if (state.selectedIds.size > 0) {
-      $('printScope').value = 'selected';
-    }
-    switchTab('impressao');
+    guardUnsavedChanges(() => {
+      updatePrintScopeOptions();
+      if (state.selectedIds.size > 0) {
+        $('printScope').value = 'selected';
+      }
+      switchTab('impressao');
+    });
   });
   $('btnDownloadPdf').addEventListener('click', () => {
     const scope = state.selectedIds.size > 0 ? 'selected' : 'filtered';
@@ -1873,17 +2121,22 @@ function bindEvents() {
     const emp = state.employees[state.currentIndex];
     if (emp) downloadPdf(null, [emp.id]);
   });
-  $('btnCancelForm').addEventListener('click', () => switchTab('consulta'));
+  $('btnCancelForm').addEventListener('click', () =>
+    guardUnsavedChanges(() => switchTab('consulta'))
+  );
+  $('btnQuickSave').addEventListener('click', () => handleSaveEmployee(null));
 
   // Form inputs & masks
   $('fCpf').addEventListener('input', (e) => {
     e.target.value = maskCpf(e.target.value);
     renderLiveCardPreview();
+    markFormDirty();
   });
   ['fNascimento', 'fDataEmissao', 'fDataContratacao', 'fDataDemissao'].forEach((id) => {
     $(id).addEventListener('input', (e) => {
       e.target.value = maskDate(e.target.value);
       renderLiveCardPreview();
+      markFormDirty();
     });
   });
   ['fCodigo', 'fNome', 'fTipo', 'fEmail', 'fEndRua', 'fEndNumero', 'fEndComplemento', 'fEndBairro', 'fEndCidade', 'fEndUf', 'fSexo', 'fRg', 'fEmitidoPor'].forEach(
@@ -1891,13 +2144,18 @@ function bindEvents() {
       $(id).addEventListener('input', () => {
         if (id === 'fEndUf') $(id).value = $(id).value.toUpperCase();
         renderLiveCardPreview();
+        markFormDirty();
       });
-      $(id).addEventListener('change', renderLiveCardPreview);
+      $(id).addEventListener('change', () => {
+        renderLiveCardPreview();
+        markFormDirty();
+      });
     }
   );
   $('fEndCep').addEventListener('input', (e) => {
     e.target.value = maskCep(e.target.value);
     renderLiveCardPreview();
+    markFormDirty();
     lookupCepIfComplete(e.target.value);
   });
   $('fCargoSelect').addEventListener('change', (e) => {
@@ -1905,15 +2163,23 @@ function bindEvents() {
     $('fCargoCustom').hidden = !isOther;
     if (isOther) $('fCargoCustom').focus();
     renderLiveCardPreview();
+    markFormDirty();
   });
-  $('fCargoCustom').addEventListener('input', renderLiveCardPreview);
+  $('fCargoCustom').addEventListener('input', () => {
+    renderLiveCardPreview();
+    markFormDirty();
+  });
   $('btnAddPhone').addEventListener('click', () => {
     phoneRows.push({ tipo: 'WhatsApp', numero: '' });
     renderPhoneRows();
+    markFormDirty();
     const inputs = $('phoneRowsContainer').querySelectorAll('.phone-number-input');
     if (inputs.length) inputs[inputs.length - 1].focus();
   });
-  $('fAssinatura').addEventListener('change', renderLiveCardPreview);
+  $('fAssinatura').addEventListener('change', () => {
+    renderLiveCardPreview();
+    markFormDirty();
+  });
 
   // Photo drag/drop/click & 3x4 cropper
   const dropZone = $('photoDropZone');
@@ -1943,6 +2209,7 @@ function bindEvents() {
     $('photoInput').value = '';
     updatePhotoEditorUI('');
     renderLiveCardPreview();
+    markFormDirty();
   });
 
   // 3x4 Cropper pointer & zoom controls
@@ -2057,6 +2324,71 @@ function bindEvents() {
   $('btnCloseConfirm').addEventListener('click', () => ($('confirmModal').hidden = true));
   $('btnCancelDelete').addEventListener('click', () => ($('confirmModal').hidden = true));
   $('btnConfirmDelete').addEventListener('click', confirmDeleteEmployee);
+
+  // Unsaved Changes Modal
+  const closeUnsavedModal = () => {
+    $('unsavedModal').hidden = true;
+    state.pendingNavAction = null;
+  };
+  $('btnCloseUnsaved').addEventListener('click', closeUnsavedModal);
+  $('btnUnsavedStay').addEventListener('click', closeUnsavedModal);
+  $('btnUnsavedDiscard').addEventListener('click', () => {
+    const action = state.pendingNavAction;
+    $('unsavedModal').hidden = true;
+    state.pendingNavAction = null;
+    clearFormDirty(true);
+    if (typeof action === 'function') action();
+  });
+  $('btnUnsavedSaveAndGo').addEventListener('click', async () => {
+    const action = state.pendingNavAction;
+    $('unsavedModal').hidden = true;
+    state.pendingNavAction = null;
+    await handleSaveEmployee(null, { onAfterSave: action });
+  });
+
+  // Draft Recovery Modal
+  const discardDraftModal = () => {
+    $('draftRecoveryModal').hidden = true;
+    clearDraftFromStorage();
+  };
+  $('btnCloseDraft').addEventListener('click', () => ($('draftRecoveryModal').hidden = true));
+  $('btnDraftDiscard').addEventListener('click', discardDraftModal);
+  $('btnDraftResume').addEventListener('click', () => {
+    const draft = loadDraftFromStorage();
+    $('draftRecoveryModal').hidden = true;
+    if (!draft || !draft.snapshot) return;
+    applySnapshotToForm(draft.snapshot, Boolean(draft.isNewMode), draft.editingRecordId || null);
+    markFormDirty(false);
+    switchTab('ficha');
+    showToast('Rascunho restaurado! Revise e clique em Salvar Cadastro.');
+  });
+
+  // Duplicate Warning Modal
+  const closeDuplicateModal = () => {
+    $('duplicateModal').hidden = true;
+    state.pendingDuplicateMatch = null;
+    state.pendingDuplicateOpts = null;
+  };
+  $('btnCloseDuplicate').addEventListener('click', closeDuplicateModal);
+  $('btnDupCancel').addEventListener('click', closeDuplicateModal);
+  $('btnDupOpenExisting').addEventListener('click', () => {
+    const match = state.pendingDuplicateMatch;
+    closeDuplicateModal();
+    if (!match) return;
+    clearFormDirty(true);
+    const idx = state.employees.findIndex((e) => e.id === match.id);
+    if (idx >= 0) {
+      state.isNewMode = false;
+      state.currentIndex = idx;
+      switchTab('ficha');
+      loadCurrentRecordIntoForm();
+    }
+  });
+  $('btnDupSaveAnyway').addEventListener('click', async () => {
+    const opts = state.pendingDuplicateOpts || {};
+    closeDuplicateModal();
+    await handleSaveEmployee(null, { ...opts, forceDuplicate: true });
+  });
 }
 
 // Keep sticky offset aligned with actual header height
@@ -2079,6 +2411,10 @@ onAuthStateChanged(auth, (user) => {
     clearListeners();
     state.user = null;
     state.isAdmin = false;
+    state.draftChecked = false;
+    state.isDirty = false;
+    state.editingRecordId = null;
+    state.pendingSelectId = null;
     showScreen('auth');
   } else {
     handleUserSignedIn(user);

@@ -783,6 +783,43 @@ body {
   font-size: 11.5px;
 }
 
+.mode-pill.is-dirty {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.unsaved-banner {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #78350f;
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.unsaved-banner[hidden] {
+  display: none;
+}
+
+.modal-md {
+  max-width: 520px;
+}
+
+.modal-footer-wrap {
+  flex-wrap: wrap;
+}
+
+.btn-save-dirty {
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.32);
+}
+
 .live-card-stage {
   overflow-x: auto;
   padding: 14px;
