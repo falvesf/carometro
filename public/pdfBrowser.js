@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/+esm';
+import { buildPackedCardLayout, loadPrintFieldsConfig } from './printLayout.js';
 
 const PAGE_W = 595;
 const PAGE_H = 842;
@@ -96,6 +97,7 @@ export async function generateCarometroPdfBlob(employees, options = {}) {
   const usuarioRodape = options.usuario_rodape !== undefined ? String(options.usuario_rodape).trim() : '';
   const dataImpressao = options.data_impressao !== undefined ? String(options.data_impressao).trim() : formatTodayBR();
   const showCargo = options.show_cargo !== false;
+  const fieldsConfig = options.fields_config || loadPrintFieldsConfig();
 
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(`${escolaNome} - ${tituloRelatorio}`);
@@ -120,15 +122,23 @@ export async function generateCarometroPdfBlob(employees, options = {}) {
     // ignore missing checkmark
   }
 
-  // Measure & paginate (up to 7 cards per page, dynamic expansion if address/phones wrap)
+  // Measure & paginate dynamically based on active fields & wrapping
   function computeCard(emp) {
-    const addrLines = wrapLines(`Endereço: ${emp.endereco || ''}`, fontReg, 8.95, 468);
-    const telLines = wrapLines(`Telefones: ${emp.telefones || ''}`, fontReg, 8.95, 468);
-    const extraAddr = Math.max(0, (addrLines.length - 1) * 11.4);
-    const extraTel = Math.max(0, (telLines.length - 1) * 11.4);
-    const extraCargo = showCargo ? 11.4 : 0;
-    const cardHeight = Math.max(96, 84 + extraAddr + extraTel + extraCargo);
-    return { emp, addrLines, telLines, extraAddr, extraTel, cardHeight };
+    const layout = buildPackedCardLayout(fieldsConfig, emp, { showCargo });
+    const measuredRows = layout.rows.map((row) => {
+      if (row.length === 1 && row[0].type === 'full') {
+        const cell = row[0];
+        const fnt = cell.bold ? fontBold : fontReg;
+        const lines = wrapLines(cell.text, fnt, 8.95, cell.widthPt);
+        return { isFull: true, cell, lines, height: lines.length * 11.4 };
+      }
+      return { isFull: false, cells: row, height: 11.4 };
+    });
+
+    const textHeight = measuredRows.reduce((acc, r) => acc + r.height, 0);
+    const minCardH = layout.showPhoto ? 96 : 36;
+    const cardHeight = Math.max(minCardH, 16 + textHeight);
+    return { emp, layout, measuredRows, cardHeight };
   }
 
   const pages = [];
@@ -190,7 +200,7 @@ export async function generateCarometroPdfBlob(employees, options = {}) {
     });
 
     for (const item of cards) {
-      const { emp, addrLines, telLines, cardTop, extraAddr } = item;
+      const { emp, layout, measuredRows, cardTop } = item;
 
       // Top horizontal separator line
       page.drawLine({
@@ -200,208 +210,137 @@ export async function generateCarometroPdfBlob(employees, options = {}) {
         color: black,
       });
 
-      // Photo frame (75x87)
-      page.drawRectangle({
-        x: 502.5,
-        y: PAGE_H - (cardTop + 3.0) - 87,
-        width: 75,
-        height: 87,
-        borderWidth: 1,
-        borderColor: frameGray,
-      });
+      if (layout.showPhoto) {
+        // Photo frame (75x87)
+        page.drawRectangle({
+          x: 502.5,
+          y: PAGE_H - (cardTop + 3.0) - 87,
+          width: 75,
+          height: 87,
+          borderWidth: 1,
+          borderColor: frameGray,
+        });
 
-      // Photo image (72x84)
-      let drewPhoto = false;
-      const photoSrc = emp.foto_data || emp.previewPhotoSrc || '';
-      if (photoSrc && photoSrc.startsWith('data:image/')) {
-        try {
-          const { bytes, isPng, isJpg } = dataUrlToBytes(photoSrc);
-          let embedded;
-          if (isPng) embedded = await pdfDoc.embedPng(bytes);
-          else if (isJpg) embedded = await pdfDoc.embedJpg(bytes);
-          else embedded = await pdfDoc.embedPng(await convertDataUrlToPngBytes(photoSrc));
+        // Photo image (72x84)
+        let drewPhoto = false;
+        const photoSrc = emp.foto_data || emp.previewPhotoSrc || '';
+        if (photoSrc && photoSrc.startsWith('data:image/')) {
+          try {
+            const { bytes, isPng, isJpg } = dataUrlToBytes(photoSrc);
+            let embedded;
+            if (isPng) embedded = await pdfDoc.embedPng(bytes);
+            else if (isJpg) embedded = await pdfDoc.embedJpg(bytes);
+            else embedded = await pdfDoc.embedPng(await convertDataUrlToPngBytes(photoSrc));
 
-          page.drawImage(embedded, {
+            page.drawImage(embedded, {
+              x: 504,
+              y: PAGE_H - (cardTop + 4.5) - 84,
+              width: 72,
+              height: 84,
+            });
+            drewPhoto = true;
+          } catch {
+            drewPhoto = false;
+          }
+        }
+
+        if (!drewPhoto) {
+          page.drawRectangle({
             x: 504,
             y: PAGE_H - (cardTop + 4.5) - 84,
             width: 72,
             height: 84,
+            color: bgPlaceholder,
           });
-          drewPhoto = true;
-        } catch {
-          drewPhoto = false;
+          const label = 'Sem foto';
+          const lw = fontReg.widthOfTextAtSize(label, 7);
+          page.drawText(label, {
+            x: 504 + (72 - lw) / 2,
+            y: PAGE_H - (cardTop + 48),
+            size: 7,
+            font: fontReg,
+            color: textMuted,
+          });
         }
       }
 
-      if (!drewPhoto) {
-        page.drawRectangle({
-          x: 504,
-          y: PAGE_H - (cardTop + 4.5) - 84,
-          width: 72,
-          height: 84,
-          color: bgPlaceholder,
-        });
-        const label = 'Sem foto';
-        const lw = fontReg.widthOfTextAtSize(label, 7);
-        page.drawText(label, {
-          x: 504 + (72 - lw) / 2,
-          y: PAGE_H - (cardTop + 48),
-          size: 7,
-          font: fontReg,
-          color: textMuted,
-        });
-      }
+      // Draw dynamic ordered rows
+      let cursorBase = cardTop + 12.6;
+      for (const row of measuredRows) {
+        if (row.isFull) {
+          const fnt = row.cell.bold ? fontBold : fontReg;
+          row.lines.forEach((line, li) => {
+            page.drawText(line, {
+              x: 18 + row.cell.xPt,
+              y: PAGE_H - (cursorBase + li * 11.4),
+              size: 8.95,
+              font: fnt,
+              color: black,
+            });
+          });
+          cursorBase += row.height;
+          continue;
+        }
 
-      // Row 1: Código, Nome, CPF
-      const codeStr = emp.codigo ? String(emp.codigo) : '';
-      const codeW = codeStr ? fontBold.widthOfTextAtSize(codeStr, 9.2) : 0;
-      if (codeStr) {
-        page.drawText(codeStr, {
-          x: 18,
-          y: PAGE_H - (cardTop + 12.6),
-          size: 9.2,
-          font: fontBold,
-          color: black,
-        });
-      }
-
-      const nomeX = codeStr ? Math.max(48.5, 18 + codeW + 6) : 18;
-      const nomeMaxW = 402 - nomeX;
-      const nomeFit = fitSingleLine(emp.nome || '', fontBold, 9.2, nomeMaxW);
-      page.drawText(nomeFit, {
-        x: nomeX,
-        y: PAGE_H - (cardTop + 12.6),
-        size: 9.2,
-        font: fontBold,
-        color: black,
-      });
-
-      page.drawText(`CPF: ${emp.cpf || ''}`, {
-        x: 408,
-        y: PAGE_H - (cardTop + 12.4),
-        size: 8.95,
-        font: fontReg,
-        color: black,
-      });
-
-      // Row 2: Endereço
-      addrLines.forEach((line, i) => {
-        page.drawText(line, {
-          x: 18,
-          y: PAGE_H - (cardTop + 23.4 + i * 11.4),
-          size: 8.95,
-          font: fontReg,
-          color: black,
-        });
-      });
-
-      const row3Base = cardTop + 34.8 + extraAddr;
-      const row4Base = row3Base + 11.0;
-      const row5Base = row4Base + 11.0;
-      const row6Base = row5Base + 12.2;
-
-      // Row 3: Data de Nascimento, Sexo, E-mail
-      page.drawText(`Data de Nascimento: ${emp.data_nascimento || ''}`, {
-        x: 18,
-        y: PAGE_H - row3Base,
-        size: 8.95,
-        font: fontReg,
-        color: black,
-      });
-      page.drawText(`Sexo: ${emp.sexo || ''}`, {
-        x: 192,
-        y: PAGE_H - row3Base,
-        size: 8.95,
-        font: fontReg,
-        color: black,
-      });
-      const emailFit = fitSingleLine(`E-mail: ${emp.email || ''}`, fontReg, 8.95, 212);
-      page.drawText(emailFit, {
-        x: 285,
-        y: PAGE_H - row3Base,
-        size: 8.95,
-        font: fontReg,
-        color: black,
-      });
-
-      // Row 4: RG, Emitido por, Data emissão
-      page.drawText(`RG: ${emp.rg || ''}`, {
-        x: 18,
-        y: PAGE_H - row4Base,
-        size: 8.95,
-        font: fontReg,
-        color: black,
-      });
-      page.drawText(`Emitido por: ${emp.emitido_por || ''}`, {
-        x: 192,
-        y: PAGE_H - row4Base,
-        size: 8.95,
-        font: fontReg,
-        color: black,
-      });
-      page.drawText(`Data emissão: ${emp.data_emissao || ''}`, {
-        x: 360,
-        y: PAGE_H - row4Base,
-        size: 8.95,
-        font: fontReg,
-        color: black,
-      });
-
-      // Row 5: Data de contratação, Data de demissão, Tem assinatura digitalizada
-      page.drawText(`Data de contratação: ${emp.data_contratacao || ''}`, {
-        x: 18,
-        y: PAGE_H - row5Base,
-        size: 8.95,
-        font: fontReg,
-        color: black,
-      });
-      page.drawText(`Data de demissão: ${emp.data_demissao || ''}`, {
-        x: 192,
-        y: PAGE_H - row5Base,
-        size: 8.95,
-        font: fontReg,
-        color: black,
-      });
-      page.drawText('Tem assinatura digitalizada:', {
-        x: 360,
-        y: PAGE_H - row5Base,
-        size: 8.95,
-        font: fontReg,
-        color: black,
-      });
-
-      if (emp.tem_assinatura_digitalizada && checkImg) {
-        page.drawImage(checkImg, {
-          x: 474,
-          y: PAGE_H - (row5Base + 2.9),
-          width: 14.25,
-          height: 11.8,
-        });
-      }
-
-      // Row 6: Telefones
-      telLines.forEach((line, i) => {
-        page.drawText(line, {
-          x: 18,
-          y: PAGE_H - (row6Base + i * 11.4),
-          size: 8.95,
-          font: fontReg,
-          color: black,
-        });
-      });
-
-      // Row 7: Cargo / Função (omitted when filtered to Professores only)
-      if (showCargo) {
-        const cargoVal = emp.cargo || (emp.tipo === 'Professor' ? 'Professor(a)' : '');
-        const row7Base = row6Base + 11.4 + item.extraTel;
-        const cargoFit = fitSingleLine(`Cargo / Função: ${cargoVal}`, fontReg, 8.95, 468);
-        page.drawText(cargoFit, {
-          x: 18,
-          y: PAGE_H - row7Base,
-          size: 8.95,
-          font: fontReg,
-          color: black,
-        });
+        for (const cell of row.cells) {
+          if (cell.type === 'code_name_pair') {
+            const codeFnt = cell.codigoBold ? fontBold : fontReg;
+            const nomeFnt = cell.nomeBold ? fontBold : fontReg;
+            const codeStr = cell.codigo || '';
+            const codeW = codeStr ? codeFnt.widthOfTextAtSize(codeStr, 9.2) : 0;
+            if (codeStr) {
+              page.drawText(codeStr, {
+                x: 18 + cell.xPt,
+                y: PAGE_H - cursorBase,
+                size: 9.2,
+                font: codeFnt,
+                color: black,
+              });
+            }
+            const nomeX = codeStr ? Math.max(18 + cell.xPt + 30.5, 18 + cell.xPt + codeW + 6) : 18 + cell.xPt;
+            const nomeMaxW = 18 + cell.xPt + cell.widthPt - nomeX - 4;
+            const nomeFit = fitSingleLine(cell.nome || '', nomeFnt, 9.2, Math.max(40, nomeMaxW));
+            page.drawText(nomeFit, {
+              x: nomeX,
+              y: PAGE_H - cursorBase,
+              size: 9.2,
+              font: nomeFnt,
+              color: black,
+            });
+          } else if (cell.type === 'checkmark') {
+            const fnt = cell.bold ? fontBold : fontReg;
+            const txt = fitSingleLine(cell.text, fnt, 8.95, cell.widthPt - 18);
+            const drawX = 18 + cell.xPt;
+            page.drawText(txt, {
+              x: drawX,
+              y: PAGE_H - cursorBase,
+              size: 8.95,
+              font: fnt,
+              color: black,
+            });
+            if (cell.checked && checkImg) {
+              const txtW = fnt.widthOfTextAtSize(txt, 8.95);
+              page.drawImage(checkImg, {
+                x: Math.min(575 - 14.25, drawX + txtW + 4),
+                y: PAGE_H - (cursorBase + 2.9),
+                width: 14.25,
+                height: 11.8,
+              });
+            }
+          } else {
+            const fnt = cell.bold ? fontBold : fontReg;
+            const size = cell.isHeaderName ? 9.2 : 8.95;
+            const txt = fitSingleLine(cell.text, fnt, size, Math.max(20, cell.widthPt - 4));
+            page.drawText(txt, {
+              x: 18 + cell.xPt,
+              y: PAGE_H - cursorBase,
+              size,
+              font: fnt,
+              color: black,
+            });
+          }
+        }
+        cursorBase += row.height;
       }
     }
 

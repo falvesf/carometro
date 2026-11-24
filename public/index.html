@@ -439,6 +439,7 @@
             </div>
           </div>
           <div class="print-toolbar-actions">
+            <button type="button" class="btn btn-secondary" id="btnPrintFields">Campos da Impressão</button>
             <button class="btn btn-secondary" id="btnPrintBrowser">Imprimir Agora</button>
             <button class="btn btn-primary-outline" id="btnOpenPdfPrint">Abrir PDF p/ Impressão</button>
             <button class="btn btn-primary" id="btnDownloadPdfFromPreview">Baixar PDF</button>
@@ -613,6 +614,35 @@
         <button type="button" class="btn btn-secondary" id="btnDupCancel">Voltar</button>
         <button type="button" class="btn btn-primary-outline" id="btnDupOpenExisting">Abrir Cadastro Existente</button>
         <button type="button" class="btn btn-primary" id="btnDupSaveAnyway">Salvar Mesmo Assim</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Personalizar Campos da Impressão -->
+  <div id="printFieldsModal" class="modal-backdrop" hidden>
+    <div class="modal modal-md card pf-modal">
+      <div class="modal-header">
+        <div>
+          <h2>Personalizar Campos da Impressão</h2>
+          <p class="pf-subtitle">Selecione os campos visíveis, ajuste a ordem (arraste ou use as setas) e marque destaque em negrito.</p>
+        </div>
+        <button type="button" class="icon-close" id="btnClosePrintFieldsModal" title="Fechar" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="pf-toolbar">
+          <div class="pf-toolbar-presets">
+            <button type="button" class="btn btn-sm btn-secondary" id="btnPfSelectAll">Marcar Todos</button>
+            <button type="button" class="btn btn-sm btn-secondary" id="btnPfMinimal">Essenciais</button>
+            <button type="button" class="btn btn-sm btn-secondary" id="btnPfReset">Restaurar Padrão</button>
+          </div>
+          <span class="pf-hint-pill">N = Negrito</span>
+        </div>
+        <p class="pf-note">Quando o filtro estiver em <strong>Somente Professores</strong>, o campo <em>Cargo / Função</em> continua oculto automaticamente.</p>
+        <div id="printFieldsList" class="pf-list"></div>
+      </div>
+      <div class="modal-footer modal-footer-wrap">
+        <button type="button" class="btn btn-secondary" id="btnCancelPrintFields">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnApplyPrintFields">Aplicar na Impressão</button>
       </div>
     </div>
   </div>

@@ -23,6 +23,13 @@ import {
 
 import { firebaseConfig, ADMIN_EMAILS } from './firebaseConfig.js';
 import { generateCarometroPdfBlob } from './pdfBrowser.js';
+import {
+  PRINT_FIELD_CATALOG,
+  getDefaultPrintFieldsConfig,
+  loadPrintFieldsConfig,
+  savePrintFieldsConfig,
+  buildPackedCardLayout,
+} from './printLayout.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -75,6 +82,8 @@ const state = {
   removePhotoFlag: false,
   pendingDeleteId: null,
   activeTab: 'consulta',
+  printFieldsConfig: loadPrintFieldsConfig(),
+  tempPrintFields: [],
   accessRequests: [],
   authorizedUsers: [],
   unsubs: [],
@@ -1441,51 +1450,57 @@ function getFormEmployeeSnapshot() {
 }
 
 function buildCardHtml(emp, standalone = false, showCargo = true) {
-  const photoSrc = emp.foto_data || '';
-  const photoHtml = photoSrc
-    ? `<img src="${photoSrc}" alt="" />`
-    : `<div class="cm-photo-empty">Sem foto</div>`;
+  const fieldsConfig = standalone ? getDefaultPrintFieldsConfig() : state.printFieldsConfig;
+  const layout = buildPackedCardLayout(fieldsConfig, emp, { showCargo });
 
-  const checkHtml = emp.tem_assinatura_digitalizada
-    ? `<img src="./assets/checkmark.png" class="cm-check-icon" alt="Sim" />`
-    : '';
+  const rowsHtml = layout.rows
+    .map((row) => {
+      if (row.length === 1 && row[0].type === 'full') {
+        const cell = row[0];
+        return `<div class="cm-dyn-full ${cell.bold ? 'cm-bold' : ''}">${escapeHtml(cell.text)}</div>`;
+      }
 
-  const cargoVal = emp.cargo || (emp.tipo === 'Professor' ? 'Professor(a)' : '');
-  const cargoHtml = showCargo
-    ? `<div class="cm-cargo">Cargo / Função: ${escapeHtml(cargoVal)}</div>`
-    : '';
+      const isHeaderRow = row.some((c) => c.type === 'code_name_pair' || c.isHeaderName);
+      const cellsHtml = row
+        .map((cell) => {
+          const leftStyle = `left: ${cell.xPt}pt; width: ${cell.widthPt}pt;`;
+          if (cell.type === 'code_name_pair') {
+            return `
+              <div class="cm-dyn-cell is-header" style="${leftStyle}">
+                ${cell.codigo ? `<span class="cm-dyn-codigo ${cell.codigoBold ? 'cm-bold' : ''}">${escapeHtml(cell.codigo)}</span>` : ''}
+                <span class="cm-dyn-nome ${cell.nomeBold ? 'cm-bold' : ''}">${escapeHtml(cell.nome)}</span>
+              </div>
+            `;
+          }
+          if (cell.type === 'checkmark') {
+            const checkImg = cell.checked
+              ? `<img src="./assets/checkmark.png" class="cm-check-icon-inline" alt="Sim" />`
+              : '';
+            return `<span class="cm-dyn-cell ${cell.isHeaderName ? 'is-header' : ''} ${cell.bold ? 'cm-bold' : ''}" style="${leftStyle}">${escapeHtml(cell.text)}${checkImg}</span>`;
+          }
+          return `<span class="cm-dyn-cell ${cell.isHeaderName ? 'is-header' : ''} ${cell.bold ? 'cm-bold' : ''}" style="${leftStyle}">${escapeHtml(cell.text)}</span>`;
+        })
+        .join('');
+
+      return `<div class="cm-dyn-row ${isHeaderRow ? 'is-header' : ''}">${cellsHtml}</div>`;
+    })
+    .join('');
+
+  let photoBoxHtml = '';
+  if (layout.showPhoto) {
+    const photoSrc = emp.foto_data || '';
+    const photoHtml = photoSrc
+      ? `<img src="${photoSrc}" alt="" />`
+      : `<div class="cm-photo-empty">Sem foto</div>`;
+    photoBoxHtml = `<div class="cm-photo-box">${photoHtml}</div>`;
+  }
 
   return `
-    <div class="cm-card ${standalone ? 'cm-card-standalone' : ''}">
+    <div class="cm-card ${standalone ? 'cm-card-standalone' : ''} ${layout.showPhoto ? '' : 'cm-no-photo'}">
       <div class="cm-card-body">
-        <div class="cm-row1">
-          ${emp.codigo ? `<span class="cm-codigo">${escapeHtml(emp.codigo)}</span>` : ''}
-          <span class="cm-nome">${escapeHtml(emp.nome)}</span>
-          <span class="cm-cpf">CPF: ${escapeHtml(emp.cpf || '')}</span>
-        </div>
-        <div class="cm-addr">Endereço: ${escapeHtml(emp.endereco || '')}</div>
-        <div class="cm-grid-row">
-          <span class="cm-col-1">Data de Nascimento: ${escapeHtml(emp.data_nascimento || '')}</span>
-          <span class="cm-col-2-email">Sexo: ${escapeHtml(emp.sexo || '')}</span>
-          <span class="cm-col-3-email">E-mail: ${escapeHtml(emp.email || '')}</span>
-        </div>
-        <div class="cm-grid-row">
-          <span class="cm-col-1">RG: ${escapeHtml(emp.rg || '')}</span>
-          <span class="cm-col-2">Emitido por: ${escapeHtml(emp.emitido_por || '')}</span>
-          <span class="cm-col-3">Data emissão: ${escapeHtml(emp.data_emissao || '')}</span>
-        </div>
-        <div class="cm-grid-row">
-          <span class="cm-col-1">Data de contratação: ${escapeHtml(emp.data_contratacao || '')}</span>
-          <span class="cm-col-2">Data de demissão: ${escapeHtml(emp.data_demissao || '')}</span>
-          <span class="cm-col-3">
-            Tem assinatura digitalizada:
-            ${checkHtml}
-          </span>
-        </div>
-        <div class="cm-tel">Telefones: ${escapeHtml(emp.telefones || '')}</div>
-        ${cargoHtml}
+        ${rowsHtml}
       </div>
-      <div class="cm-photo-box">${photoHtml}</div>
+      ${photoBoxHtml}
     </div>
   `;
 }
@@ -1727,12 +1742,20 @@ function shouldShowCargo(overrideScope = null, specificIds = null) {
 }
 
 function estimateHtmlCardHeightPt(emp, showCargo = true) {
-  const addrLen = (`Endereço: ${emp.endereco || ''}`).length;
-  const addrLines = Math.max(1, Math.ceil(addrLen / 95));
-  const telLen = (`Telefones: ${emp.telefones || ''}`).length;
-  const telLines = Math.max(1, Math.ceil(telLen / 95));
-  const extraCargo = showCargo ? 11.4 : 0;
-  return Math.max(96, 84 + (addrLines - 1) * 11.4 + (telLines - 1) * 11.4 + extraCargo);
+  const layout = buildPackedCardLayout(state.printFieldsConfig, emp, { showCargo });
+  const maxChars = layout.showPhoto ? 95 : 112;
+  let textHeight = 0;
+  for (const row of layout.rows) {
+    if (row.length === 1 && row[0].type === 'full') {
+      const lines = Math.max(1, Math.ceil((row[0].text || '').length / maxChars));
+      textHeight += lines * 11.4 + 0.8;
+    } else {
+      const isHeaderRow = row.some((c) => c.type === 'code_name_pair' || c.isHeaderName);
+      textHeight += isHeaderRow ? 13.0 : 11.4;
+    }
+  }
+  const minCardH = layout.showPhoto ? 96 : 36;
+  return Math.max(minCardH, 16 + textHeight);
 }
 
 function buildA4PagesHtml(employees, showCargo = true) {
@@ -1789,6 +1812,105 @@ function renderPrintPreview() {
   $('printOnlyRoot').innerHTML = html;
 }
 
+const PRINT_FIELDS_LABEL_MAP = new Map(PRINT_FIELD_CATALOG.map((f) => [f.key, f.label]));
+const PRINT_FIELDS_MINIMAL_SET = new Set(['foto', 'codigo', 'nome', 'cpf', 'telefones', 'cargo']);
+let dragPrintFieldIndex = null;
+
+function openPrintFieldsModal() {
+  state.tempPrintFields = state.printFieldsConfig.map((item) => ({ ...item }));
+  renderPrintFieldsModalList();
+  $('printFieldsModal').hidden = false;
+}
+
+function moveTempPrintField(fromIdx, toIdx) {
+  if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return;
+  if (fromIdx >= state.tempPrintFields.length || toIdx >= state.tempPrintFields.length) return;
+  const [moved] = state.tempPrintFields.splice(fromIdx, 1);
+  state.tempPrintFields.splice(toIdx, 0, moved);
+  renderPrintFieldsModalList();
+}
+
+function renderPrintFieldsModalList() {
+  const container = $('printFieldsList');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const total = state.tempPrintFields.length;
+  state.tempPrintFields.forEach((item, idx) => {
+    const label = PRINT_FIELDS_LABEL_MAP.get(item.key) || item.key;
+    const isPhoto = item.key === 'foto';
+
+    const row = document.createElement('div');
+    row.className = `pf-row${item.enabled ? '' : ' is-disabled'}`;
+    row.draggable = true;
+    row.dataset.index = String(idx);
+
+    row.innerHTML = `
+      <div class="pf-row-left">
+        <span class="pf-handle" title="Arraste para reordenar">&#9776;</span>
+        <label class="pf-check-label">
+          <input type="checkbox" class="pf-checkbox" ${item.enabled ? 'checked' : ''} />
+          <span class="pf-field-name">${escapeHtml(label)}</span>
+        </label>
+      </div>
+      <div class="pf-actions">
+        <button type="button" class="pf-bold-btn ${item.bold ? 'active' : ''}" title="${isPhoto ? 'Foto não usa negrito' : 'Alternar negrito na impressão'}" ${isPhoto ? 'disabled' : ''}>N</button>
+        <button type="button" class="pf-move-btn pf-move-up" title="Mover para cima" ${idx === 0 ? 'disabled' : ''}>&#8593;</button>
+        <button type="button" class="pf-move-btn pf-move-down" title="Mover para baixo" ${idx === total - 1 ? 'disabled' : ''}>&#8595;</button>
+      </div>
+    `;
+
+    row.querySelector('.pf-checkbox').addEventListener('change', (e) => {
+      item.enabled = e.target.checked;
+      row.classList.toggle('is-disabled', !item.enabled);
+    });
+
+    if (!isPhoto) {
+      row.querySelector('.pf-bold-btn').addEventListener('click', (e) => {
+        item.bold = !item.bold;
+        e.currentTarget.classList.toggle('active', item.bold);
+      });
+    }
+
+    row.querySelector('.pf-move-up').addEventListener('click', () => moveTempPrintField(idx, idx - 1));
+    row.querySelector('.pf-move-down').addEventListener('click', () => moveTempPrintField(idx, idx + 1));
+
+    row.addEventListener('dragstart', (e) => {
+      dragPrintFieldIndex = idx;
+      row.classList.add('dragging');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(idx));
+      }
+    });
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (dragPrintFieldIndex !== null && dragPrintFieldIndex !== idx) {
+        row.classList.add('drag-over');
+      }
+    });
+    row.addEventListener('dragleave', () => {
+      row.classList.remove('drag-over');
+    });
+    row.addEventListener('drop', (e) => {
+      e.preventDefault();
+      row.classList.remove('drag-over');
+      const fromIdx = dragPrintFieldIndex;
+      dragPrintFieldIndex = null;
+      if (fromIdx !== null && fromIdx !== idx) {
+        moveTempPrintField(fromIdx, idx);
+      }
+    });
+    row.addEventListener('dragend', () => {
+      dragPrintFieldIndex = null;
+      row.classList.remove('dragging');
+      container.querySelectorAll('.pf-row.drag-over').forEach((el) => el.classList.remove('drag-over'));
+    });
+
+    container.appendChild(row);
+  });
+}
+
 function triggerBrowserPrint(overrideScope = null, specificIds = null) {
   const list = getEmployeesForPrint(overrideScope, specificIds);
   const showCargo = shouldShowCargo(overrideScope, specificIds);
@@ -1807,6 +1929,7 @@ async function downloadPdf(overrideScope = null, specificIds = null, inline = fa
       usuario_rodape: $('printUsuario').value.trim(),
       data_impressao: $('printData').value.trim(),
       show_cargo: showCargo,
+      fields_config: state.printFieldsConfig,
     });
     const url = URL.createObjectURL(blob);
     if (inline) {
@@ -2321,9 +2444,47 @@ function bindEvents() {
     }
     renderPrintPreview();
   });
+  $('btnPrintFields').addEventListener('click', openPrintFieldsModal);
   $('btnPrintBrowser').addEventListener('click', () => triggerBrowserPrint());
   $('btnOpenPdfPrint').addEventListener('click', () => downloadPdf(null, null, true));
   $('btnDownloadPdfFromPreview').addEventListener('click', () => downloadPdf(null, null, false));
+
+  // Print Fields Customization Modal
+  const closePrintFieldsModal = () => {
+    $('printFieldsModal').hidden = true;
+  };
+  $('btnClosePrintFieldsModal').addEventListener('click', closePrintFieldsModal);
+  $('btnCancelPrintFields').addEventListener('click', closePrintFieldsModal);
+  $('printFieldsModal').addEventListener('click', (e) => {
+    if (e.target === $('printFieldsModal')) closePrintFieldsModal();
+  });
+  $('btnPfSelectAll').addEventListener('click', () => {
+    state.tempPrintFields.forEach((item) => {
+      item.enabled = true;
+    });
+    renderPrintFieldsModalList();
+  });
+  $('btnPfMinimal').addEventListener('click', () => {
+    state.tempPrintFields.forEach((item) => {
+      item.enabled = PRINT_FIELDS_MINIMAL_SET.has(item.key);
+    });
+    renderPrintFieldsModalList();
+  });
+  $('btnPfReset').addEventListener('click', () => {
+    state.tempPrintFields = getDefaultPrintFieldsConfig();
+    renderPrintFieldsModalList();
+  });
+  $('btnApplyPrintFields').addEventListener('click', () => {
+    const anyEnabled = state.tempPrintFields.some((item) => item.enabled);
+    if (!anyEnabled) {
+      showToast('Selecione ao menos um campo para exibir na impressão.', 'error');
+      return;
+    }
+    state.printFieldsConfig = savePrintFieldsConfig(state.tempPrintFields);
+    $('printFieldsModal').hidden = true;
+    renderPrintPreview();
+    showToast('Campos da impressão atualizados!', 'success');
+  });
 
   // Modals & Inline School Name Edit
   $('headerSchoolName').addEventListener('click', openInlineSchoolEditor);

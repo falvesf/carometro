@@ -1294,6 +1294,85 @@ body {
   text-overflow: ellipsis;
 }
 
+.cm-card.cm-no-photo {
+  min-height: 36pt;
+}
+
+.cm-card.cm-no-photo .cm-card-body {
+  width: 559pt;
+}
+
+.cm-dyn-row {
+  position: relative;
+  height: 11.4pt;
+  width: 100%;
+  line-height: 11.2pt;
+}
+
+.cm-dyn-row.is-header {
+  height: 12.6pt;
+  margin-bottom: 0.4pt;
+}
+
+.cm-dyn-cell {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 8.95pt;
+  font-weight: normal;
+}
+
+.cm-dyn-cell.is-header {
+  font-size: 9.2pt;
+}
+
+.cm-dyn-codigo {
+  font-size: 9.2pt;
+  font-weight: normal;
+  display: inline-block;
+  min-width: 25pt;
+  margin-right: 4pt;
+}
+
+.cm-dyn-nome {
+  font-size: 9.2pt;
+  font-weight: normal;
+  display: inline-block;
+  max-width: 350pt;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.cm-card.cm-no-photo .cm-dyn-nome {
+  max-width: 425pt;
+}
+
+.cm-dyn-full {
+  width: 100%;
+  font-size: 8.95pt;
+  font-weight: normal;
+  line-height: 11.4pt;
+  word-wrap: break-word;
+  margin: 0.4pt 0;
+}
+
+.cm-bold {
+  font-weight: bold !important;
+}
+
+.cm-check-icon-inline {
+  width: 14.25pt;
+  height: 11.8pt;
+  object-fit: contain;
+  display: inline-block;
+  vertical-align: -2pt;
+  margin-left: 3pt;
+}
+
 .cm-photo-box {
   position: absolute;
   left: 484.5pt; /* 502.5 - 18 */
@@ -1544,6 +1623,179 @@ body {
 
 .file-btn {
   position: relative;
+}
+
+/* Print Fields Customization Modal */
+.pf-modal {
+  max-width: 560px;
+}
+
+.pf-subtitle {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.pf-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.pf-toolbar-presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pf-hint-pill {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--brand);
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.pf-note {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.pf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.pf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.pf-row.is-disabled {
+  background: #f8fafc;
+  opacity: 0.72;
+}
+
+.pf-row.dragging {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+.pf-row.drag-over {
+  border-color: var(--brand);
+  background: #eff6ff;
+}
+
+.pf-row-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pf-handle {
+  cursor: grab;
+  color: #94a3b8;
+  font-size: 14px;
+  user-select: none;
+  padding: 2px 4px;
+  line-height: 1;
+}
+
+.pf-handle:active {
+  cursor: grabbing;
+}
+
+.pf-check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+
+.pf-check-label input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+.pf-field-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.pf-bold-btn,
+.pf-move-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 12.5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pf-bold-btn {
+  font-weight: 800;
+  font-family: Georgia, serif;
+}
+
+.pf-bold-btn.active {
+  background: var(--brand);
+  color: #ffffff;
+  border-color: var(--brand);
+}
+
+.pf-bold-btn:disabled,
+.pf-move-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pf-move-btn:hover:not(:disabled),
+.pf-bold-btn:hover:not(:disabled):not(.active) {
+  background: #f1f5f9;
 }
 
 /* Toast */
