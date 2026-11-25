@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/+esm';
-import { buildPackedCardLayout, loadPrintFieldsConfig } from './printLayout.js';
+import { buildPackedCardLayout, loadPrintFieldsConfig } from './printLayout.js?v=20261125-1';
 
 const PAGE_W = 595;
 const PAGE_H = 842;

@@ -21,15 +21,15 @@ import {
   serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
 
-import { firebaseConfig, ADMIN_EMAILS } from './firebaseConfig.js';
-import { generateCarometroPdfBlob } from './pdfBrowser.js';
+import { firebaseConfig, ADMIN_EMAILS } from './firebaseConfig.js?v=20261125-1';
+import { generateCarometroPdfBlob } from './pdfBrowser.js?v=20261125-1';
 import {
   PRINT_FIELD_CATALOG,
   getDefaultPrintFieldsConfig,
   loadPrintFieldsConfig,
   savePrintFieldsConfig,
   buildPackedCardLayout,
-} from './printLayout.js';
+} from './printLayout.js?v=20261125-1';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
