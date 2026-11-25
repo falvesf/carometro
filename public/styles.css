@@ -1328,12 +1328,23 @@ body {
   font-size: 9.2pt;
 }
 
+.cm-dyn-cell.is-pair {
+  display: flex;
+  align-items: baseline;
+  gap: 5pt;
+}
+
 .cm-dyn-codigo {
   font-size: 9.2pt;
   font-weight: normal;
   display: inline-block;
   min-width: 25pt;
   margin-right: 4pt;
+}
+
+.cm-dyn-cell.is-pair .cm-dyn-codigo {
+  flex-shrink: 0;
+  margin-right: 0;
 }
 
 .cm-dyn-nome {
@@ -1345,6 +1356,12 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: bottom;
+}
+
+.cm-dyn-cell.is-pair .cm-dyn-nome {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
 }
 
 .cm-card.cm-no-photo .cm-dyn-nome {
@@ -1627,7 +1644,7 @@ body {
 
 /* Print Fields Customization Modal */
 .pf-modal {
-  max-width: 560px;
+  max-width: 720px;
 }
 
 .pf-subtitle {
@@ -1733,11 +1750,11 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  flex: 1;
-  min-width: 0;
+  min-width: 155px;
+  flex-shrink: 0;
 }
 
 .pf-check-label input[type="checkbox"] {
@@ -1753,6 +1770,32 @@ body {
   text-overflow: ellipsis;
 }
 
+.pf-label-wrap {
+  flex: 1;
+  min-width: 120px;
+}
+
+.pf-label-input {
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 12.5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #f8fafc;
+  color: var(--ink);
+}
+
+.pf-label-input:focus {
+  outline: none;
+  border-color: var(--brand);
+  background: #ffffff;
+}
+
+.pf-label-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .pf-actions {
   display: flex;
   align-items: center;
@@ -1760,6 +1803,7 @@ body {
   flex-shrink: 0;
 }
 
+.pf-wrap-btn,
 .pf-bold-btn,
 .pf-move-btn {
   min-width: 28px;
@@ -1769,11 +1813,26 @@ body {
   border-radius: 6px;
   background: #ffffff;
   color: var(--ink);
-  font-size: 12.5px;
+  font-size: 12px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.pf-wrap-btn {
+  font-weight: 600;
+  font-size: 11px;
+  min-width: 68px;
+  color: var(--brand);
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.pf-wrap-btn.is-full {
+  color: #475569;
+  background: #f1f5f9;
+  border-color: var(--border);
 }
 
 .pf-bold-btn {
@@ -1787,15 +1846,17 @@ body {
   border-color: var(--brand);
 }
 
+.pf-wrap-btn:disabled,
 .pf-bold-btn:disabled,
 .pf-move-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
 
+.pf-wrap-btn:hover:not(:disabled),
 .pf-move-btn:hover:not(:disabled),
 .pf-bold-btn:hover:not(:disabled):not(.active) {
-  background: #f1f5f9;
+  filter: brightness(0.96);
 }
 
 /* Toast */

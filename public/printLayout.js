@@ -1,30 +1,32 @@
 export const PRINT_FIELDS_STORAGE_KEY = 'carometro_print_fields_v1';
 
 export const PRINT_FIELD_CATALOG = [
-  { key: 'foto', label: 'Foto 3x4', defaultEnabled: true, defaultBold: false, isPhoto: true },
-  { key: 'codigo', label: 'Código / Matrícula', defaultEnabled: true, defaultBold: true, slotW: 48 },
-  { key: 'nome', label: 'Nome Completo', defaultEnabled: true, defaultBold: true, slotW: 385 },
-  { key: 'cpf', label: 'CPF', defaultEnabled: true, defaultBold: false, slotW: 95 },
-  { key: 'endereco', label: 'Endereço', defaultEnabled: true, defaultBold: false, fullWidth: true },
-  { key: 'data_nascimento', label: 'Data de Nascimento', defaultEnabled: true, defaultBold: false, slotW: 174 },
-  { key: 'sexo', label: 'Sexo', defaultEnabled: true, defaultBold: false, slotW: 93 },
-  { key: 'email', label: 'E-mail', defaultEnabled: true, defaultBold: false, slotW: 213 },
-  { key: 'rg', label: 'RG', defaultEnabled: true, defaultBold: false, slotW: 174 },
-  { key: 'emitido_por', label: 'Emitido por', defaultEnabled: true, defaultBold: false, slotW: 168 },
-  { key: 'data_emissao', label: 'Data emissão (RG)', defaultEnabled: true, defaultBold: false, slotW: 138 },
-  { key: 'data_contratacao', label: 'Data de contratação', defaultEnabled: true, defaultBold: false, slotW: 174 },
-  { key: 'data_demissao', label: 'Data de demissão', defaultEnabled: true, defaultBold: false, slotW: 168 },
+  { key: 'foto', label: 'Foto 3x4', defaultPrintLabel: '', defaultEnabled: true, defaultBold: false, defaultFullWidth: false, isPhoto: true },
+  { key: 'codigo', label: 'Código / Matrícula', defaultPrintLabel: '', defaultEnabled: true, defaultBold: true, defaultFullWidth: false, slotW: 48 },
+  { key: 'nome', label: 'Nome Completo', defaultPrintLabel: '', defaultEnabled: true, defaultBold: true, defaultFullWidth: false, slotW: 385 },
+  { key: 'cpf', label: 'CPF', defaultPrintLabel: 'CPF', defaultEnabled: true, defaultBold: false, defaultFullWidth: false, slotW: 95 },
+  { key: 'endereco', label: 'Endereço', defaultPrintLabel: 'Endereço', defaultEnabled: true, defaultBold: false, defaultFullWidth: true, slotW: 260 },
+  { key: 'data_nascimento', label: 'Data de Nascimento', defaultPrintLabel: 'Data de Nascimento', defaultEnabled: true, defaultBold: false, defaultFullWidth: false, slotW: 174 },
+  { key: 'sexo', label: 'Sexo', defaultPrintLabel: 'Sexo', defaultEnabled: true, defaultBold: false, defaultFullWidth: false, slotW: 93 },
+  { key: 'email', label: 'E-mail', defaultPrintLabel: 'E-mail', defaultEnabled: true, defaultBold: false, defaultFullWidth: false, slotW: 213 },
+  { key: 'rg', label: 'RG', defaultPrintLabel: 'RG', defaultEnabled: true, defaultBold: false, defaultFullWidth: false, slotW: 174 },
+  { key: 'emitido_por', label: 'Emitido por', defaultPrintLabel: 'Emitido por', defaultEnabled: true, defaultBold: false, defaultFullWidth: false, slotW: 168 },
+  { key: 'data_emissao', label: 'Data emissão (RG)', defaultPrintLabel: 'Data emissão', defaultEnabled: true, defaultBold: false, defaultFullWidth: false, slotW: 138 },
+  { key: 'data_contratacao', label: 'Data de contratação', defaultPrintLabel: 'Data de contratação', defaultEnabled: true, defaultBold: false, defaultFullWidth: false, slotW: 174 },
+  { key: 'data_demissao', label: 'Data de demissão', defaultPrintLabel: 'Data de demissão', defaultEnabled: true, defaultBold: false, defaultFullWidth: false, slotW: 168 },
   {
     key: 'tem_assinatura_digitalizada',
     label: 'Tem assinatura digitalizada',
+    defaultPrintLabel: 'Tem assinatura digitalizada',
     defaultEnabled: true,
     defaultBold: false,
+    defaultFullWidth: false,
     slotW: 138,
     isCheckmark: true,
   },
-  { key: 'telefones', label: 'Telefones', defaultEnabled: true, defaultBold: false, fullWidth: true },
-  { key: 'cargo', label: 'Cargo / Função', defaultEnabled: true, defaultBold: false, fullWidth: true },
-  { key: 'tipo', label: 'Categoria (Professor / Funcionário)', defaultEnabled: false, defaultBold: false, slotW: 174 },
+  { key: 'telefones', label: 'Telefones', defaultPrintLabel: 'Telefones', defaultEnabled: true, defaultBold: false, defaultFullWidth: true, slotW: 213 },
+  { key: 'cargo', label: 'Cargo / Função', defaultPrintLabel: 'Cargo / Função', defaultEnabled: true, defaultBold: false, defaultFullWidth: false, slotW: 210 },
+  { key: 'tipo', label: 'Categoria (Professor / Funcionário)', defaultPrintLabel: 'Categoria', defaultEnabled: false, defaultBold: false, defaultFullWidth: false, slotW: 174 },
 ];
 
 const CATALOG_MAP = new Map(PRINT_FIELD_CATALOG.map((f) => [f.key, f]));
@@ -34,6 +36,8 @@ export function getDefaultPrintFieldsConfig() {
     key: f.key,
     enabled: f.defaultEnabled,
     bold: f.defaultBold,
+    fullWidth: f.defaultFullWidth,
+    customLabel: f.defaultPrintLabel,
   }));
 }
 
@@ -46,10 +50,13 @@ export function normalizePrintFieldsConfig(rawList) {
   for (const item of rawList) {
     if (!item || !CATALOG_MAP.has(item.key) || seen.has(item.key)) continue;
     seen.add(item.key);
+    const meta = CATALOG_MAP.get(item.key);
     normalized.push({
       key: item.key,
       enabled: Boolean(item.enabled),
       bold: Boolean(item.bold),
+      fullWidth: typeof item.fullWidth === 'boolean' ? item.fullWidth : Boolean(meta.defaultFullWidth),
+      customLabel: typeof item.customLabel === 'string' ? item.customLabel : meta.defaultPrintLabel,
     });
   }
   for (const def of defaults) {
@@ -80,42 +87,55 @@ export function savePrintFieldsConfig(config) {
   return clean;
 }
 
-export function formatPrintFieldValue(key, emp, isTopName = false) {
+export function formatPrintFieldValue(fieldOrKey, emp, isTopName = false) {
+  const key = typeof fieldOrKey === 'string' ? fieldOrKey : fieldOrKey?.key;
+  const meta = CATALOG_MAP.get(key);
+  const hasCustomLabel =
+    typeof fieldOrKey === 'object' && fieldOrKey !== null && typeof fieldOrKey.customLabel === 'string';
+  const labelPrefix = hasCustomLabel
+    ? fieldOrKey.customLabel.trim()
+    : (meta?.defaultPrintLabel ?? '').trim();
+
+  const withLabel = (rawVal) => (labelPrefix ? `${labelPrefix}: ${rawVal}` : String(rawVal));
+
   switch (key) {
     case 'codigo':
-      return String(emp.codigo || '');
+      return withLabel(emp.codigo || '');
     case 'nome':
-      return isTopName ? String(emp.nome || '') : `Nome: ${emp.nome || ''}`;
+      if (!hasCustomLabel && !isTopName) {
+        return `Nome: ${emp.nome || ''}`;
+      }
+      return withLabel(emp.nome || '');
     case 'cpf':
-      return `CPF: ${emp.cpf || ''}`;
+      return withLabel(emp.cpf || '');
     case 'endereco':
-      return `Endereço: ${emp.endereco || ''}`;
+      return withLabel(emp.endereco || '');
     case 'data_nascimento':
-      return `Data de Nascimento: ${emp.data_nascimento || ''}`;
+      return withLabel(emp.data_nascimento || '');
     case 'sexo':
-      return `Sexo: ${emp.sexo || ''}`;
+      return withLabel(emp.sexo || '');
     case 'email':
-      return `E-mail: ${emp.email || ''}`;
+      return withLabel(emp.email || '');
     case 'rg':
-      return `RG: ${emp.rg || ''}`;
+      return withLabel(emp.rg || '');
     case 'emitido_por':
-      return `Emitido por: ${emp.emitido_por || ''}`;
+      return withLabel(emp.emitido_por || '');
     case 'data_emissao':
-      return `Data emissão: ${emp.data_emissao || ''}`;
+      return withLabel(emp.data_emissao || '');
     case 'data_contratacao':
-      return `Data de contratação: ${emp.data_contratacao || ''}`;
+      return withLabel(emp.data_contratacao || '');
     case 'data_demissao':
-      return `Data de demissão: ${emp.data_demissao || ''}`;
+      return withLabel(emp.data_demissao || '');
     case 'tem_assinatura_digitalizada':
-      return 'Tem assinatura digitalizada:';
+      return labelPrefix ? `${labelPrefix}:` : '';
     case 'telefones':
-      return `Telefones: ${emp.telefones || ''}`;
+      return withLabel(emp.telefones || '');
     case 'cargo': {
       const cargoVal = emp.cargo || (emp.tipo === 'Professor' ? 'Professor(a)' : '');
-      return `Cargo / Função: ${cargoVal}`;
+      return withLabel(cargoVal);
     }
     case 'tipo':
-      return `Categoria: ${emp.tipo || ''}`;
+      return withLabel(emp.tipo || '');
     default:
       return '';
   }
@@ -144,36 +164,71 @@ export function buildPackedCardLayout(fieldsConfig, emp, options = {}) {
 
   const flushRow = () => {
     if (currentRow.length > 0) {
+      const last = currentRow[currentRow.length - 1];
+      if (last && last.type !== 'full') {
+        last.widthPt = Math.max(last.widthPt, maxRowWidth - last.xPt);
+      }
       rows.push(currentRow);
       currentRow = [];
       usedW = 0;
     }
   };
 
+  const getSlotWidthForField = (field) => {
+    const meta = CATALOG_MAP.get(field.key);
+    if (field.key === 'cpf') return 90;
+    if (field.key === 'codigo') return 138;
+    return meta?.slotW || 174;
+  };
+
+  const computeHeaderWidth = (nextField, currentUsedW) => {
+    const defaultW = showPhoto ? 385 : 460;
+    if (!nextField || nextField.fullWidth) {
+      return { widthPt: defaultW, advanceW: defaultW };
+    }
+    if (nextField.key === 'cpf') {
+      const w = showPhoto ? 385 : 460;
+      return { widthPt: w, advanceW: w + 5 };
+    }
+    const nextSlot = getSlotWidthForField(nextField);
+    const gap = 5;
+    const minHeaderW = showPhoto ? 210 : 250;
+    const remaining = maxRowWidth - currentUsedW - nextSlot - gap;
+    if (remaining >= minHeaderW) {
+      const w = Math.min(defaultW, remaining);
+      return { widthPt: w, advanceW: w + gap };
+    }
+    return { widthPt: defaultW, advanceW: defaultW };
+  };
+
   for (let i = 0; i < active.length; i++) {
     const f = active[i];
     const meta = CATALOG_MAP.get(f.key);
 
-    // Special natural pairing: codigo immediately followed by nome shares the header slot (385pt)
-    if (f.key === 'codigo' && active[i + 1]?.key === 'nome') {
+    // Special natural pairing: codigo immediately followed by nome shares the header slot
+    if (f.key === 'codigo' && !f.fullWidth && active[i + 1]?.key === 'nome' && !active[i + 1]?.fullWidth) {
       const nomeCfg = active[i + 1];
-      const pairWidth = showPhoto ? 385 : 460;
-      if (usedW + pairWidth > maxRowWidth) flushRow();
+      const nextAfterNome = active[i + 2];
+      const { widthPt, advanceW } = computeHeaderWidth(nextAfterNome, usedW);
+      if (usedW + advanceW > maxRowWidth) flushRow();
+      const adj = computeHeaderWidth(nextAfterNome, usedW);
+      const codeLabel = (f.customLabel ?? '').trim();
+      const nomeLabel = (nomeCfg.customLabel ?? '').trim();
       currentRow.push({
         type: 'code_name_pair',
         xPt: usedW,
-        widthPt: pairWidth,
-        codigo: String(emp.codigo || ''),
+        widthPt: adj.widthPt,
+        codigo: codeLabel ? `${codeLabel}: ${emp.codigo || ''}` : String(emp.codigo || ''),
         codigoBold: f.bold,
-        nome: String(emp.nome || ''),
+        nome: nomeLabel ? `${nomeLabel}: ${emp.nome || ''}` : String(emp.nome || ''),
         nomeBold: nomeCfg.bold,
       });
-      usedW += pairWidth;
+      usedW += adj.advanceW;
       i++; // consumed nome as well
       continue;
     }
 
-    if (meta.fullWidth) {
+    if (f.fullWidth) {
       flushRow();
       rows.push([
         {
@@ -181,7 +236,7 @@ export function buildPackedCardLayout(fieldsConfig, emp, options = {}) {
           key: f.key,
           xPt: 0,
           widthPt: showPhoto ? 468 : 555,
-          text: formatPrintFieldValue(f.key, emp, false),
+          text: formatPrintFieldValue(f, emp, false),
           bold: f.bold,
         },
       ]);
@@ -189,29 +244,28 @@ export function buildPackedCardLayout(fieldsConfig, emp, options = {}) {
     }
 
     const isTopRow = rows.length === 0 && currentRow.length === 0;
-    let slotW = meta.slotW || 174;
-    let text = formatPrintFieldValue(f.key, emp, isTopRow);
+    let slotW = getSlotWidthForField(f);
+    let advanceW = slotW;
+    const text = formatPrintFieldValue(f, emp, isTopRow);
 
-    if (f.key === 'codigo') {
-      slotW = 138;
-      text = `Código: ${emp.codigo || ''}`;
-    } else if (f.key === 'nome') {
-      slotW = showPhoto ? 385 : 460;
-      text = formatPrintFieldValue('nome', emp, isTopRow);
+    if (f.key === 'nome') {
+      const nextAfter = active[i + 1];
+      const adj = computeHeaderWidth(nextAfter, usedW);
+      if (usedW + adj.advanceW > maxRowWidth) flushRow();
+      const adjAfterFlush = computeHeaderWidth(nextAfter, usedW);
+      slotW = adjAfterFlush.widthPt;
+      advanceW = adjAfterFlush.advanceW;
     }
 
     if (usedW + slotW > maxRowWidth) {
       flushRow();
     }
 
-    // If this is the last column in a tight row with no photo, give extra breathing room
-    const adjustedW =
-      f.key === 'cpf' && currentRow.some((item) => item.type === 'code_name_pair' || item.key === 'nome')
-        ? maxRowWidth - usedW
-        : slotW;
+    const rowHasName = currentRow.some((item) => item.type === 'code_name_pair' || item.key === 'nome');
+    const adjustedW = rowHasName && f.key === 'cpf' ? maxRowWidth - usedW : slotW;
 
     currentRow.push({
-      type: meta.isCheckmark ? 'checkmark' : 'cell',
+      type: meta?.isCheckmark ? 'checkmark' : 'cell',
       key: f.key,
       xPt: usedW,
       widthPt: adjustedW,
@@ -220,7 +274,7 @@ export function buildPackedCardLayout(fieldsConfig, emp, options = {}) {
       checked: f.key === 'tem_assinatura_digitalizada' ? Boolean(emp.tem_assinatura_digitalizada) : false,
       isHeaderName: f.key === 'nome' && isTopRow,
     });
-    usedW += slotW;
+    usedW += advanceW;
   }
 
   flushRow();

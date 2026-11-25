@@ -1466,7 +1466,7 @@ function buildCardHtml(emp, standalone = false, showCargo = true) {
           const leftStyle = `left: ${cell.xPt}pt; width: ${cell.widthPt}pt;`;
           if (cell.type === 'code_name_pair') {
             return `
-              <div class="cm-dyn-cell is-header" style="${leftStyle}">
+              <div class="cm-dyn-cell is-header is-pair" style="${leftStyle}">
                 ${cell.codigo ? `<span class="cm-dyn-codigo ${cell.codigoBold ? 'cm-bold' : ''}">${escapeHtml(cell.codigo)}</span>` : ''}
                 <span class="cm-dyn-nome ${cell.nomeBold ? 'cm-bold' : ''}">${escapeHtml(cell.nome)}</span>
               </div>
@@ -1852,8 +1852,19 @@ function renderPrintFieldsModalList() {
           <input type="checkbox" class="pf-checkbox" ${item.enabled ? 'checked' : ''} />
           <span class="pf-field-name">${escapeHtml(label)}</span>
         </label>
+        <div class="pf-label-wrap">
+          <input
+            type="text"
+            class="pf-label-input"
+            value="${escapeHtml(isPhoto ? 'Imagem 3x4' : (item.customLabel ?? ''))}"
+            placeholder="Sem prefixo (só valor)"
+            title="${isPhoto ? 'Campo de imagem' : 'Nome que sairá na impressão (vazio = só o valor)'}"
+            ${isPhoto ? 'disabled' : ''}
+          />
+        </div>
       </div>
       <div class="pf-actions">
+        <button type="button" class="pf-wrap-btn ${item.fullWidth ? 'is-full' : ''}" title="${isPhoto ? 'Foto fixa à direita' : (item.fullWidth ? 'Ocupando linha inteira (clique p/ tabular na mesma linha)' : 'Tabulado na mesma linha quando couber (clique p/ linha toda)')}" ${isPhoto ? 'disabled' : ''}>${isPhoto ? 'Fixa' : (item.fullWidth ? 'Linha toda' : 'Tabulado')}</button>
         <button type="button" class="pf-bold-btn ${item.bold ? 'active' : ''}" title="${isPhoto ? 'Foto não usa negrito' : 'Alternar negrito na impressão'}" ${isPhoto ? 'disabled' : ''}>N</button>
         <button type="button" class="pf-move-btn pf-move-up" title="Mover para cima" ${idx === 0 ? 'disabled' : ''}>&#8593;</button>
         <button type="button" class="pf-move-btn pf-move-down" title="Mover para baixo" ${idx === total - 1 ? 'disabled' : ''}>&#8595;</button>
@@ -1866,6 +1877,26 @@ function renderPrintFieldsModalList() {
     });
 
     if (!isPhoto) {
+      const labelInput = row.querySelector('.pf-label-input');
+      labelInput.addEventListener('input', (e) => {
+        item.customLabel = e.target.value;
+      });
+      labelInput.addEventListener('focus', () => {
+        row.draggable = false;
+      });
+      labelInput.addEventListener('blur', () => {
+        row.draggable = true;
+      });
+
+      row.querySelector('.pf-wrap-btn').addEventListener('click', (e) => {
+        item.fullWidth = !item.fullWidth;
+        e.currentTarget.classList.toggle('is-full', item.fullWidth);
+        e.currentTarget.textContent = item.fullWidth ? 'Linha toda' : 'Tabulado';
+        e.currentTarget.title = item.fullWidth
+          ? 'Ocupando linha inteira (clique p/ tabular na mesma linha)'
+          : 'Tabulado na mesma linha quando couber (clique p/ linha toda)';
+      });
+
       row.querySelector('.pf-bold-btn').addEventListener('click', (e) => {
         item.bold = !item.bold;
         e.currentTarget.classList.toggle('active', item.bold);
